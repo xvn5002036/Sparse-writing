@@ -140,7 +140,7 @@
         };
 
         // --- 共用：紙張內容渲染器 ---
-        const PaperContent = ({ blocks, selectedId, showPreview, onMouseDown, onTouchStart, onContextMenu }) => {
+        const PaperContent = ({ blocks, selectedId, showPreview, batchData = [], onMouseDown, onTouchStart, onContextMenu }) => {
             return (
                 <React.Fragment>
                     {blocks.map((block) => (
@@ -158,8 +158,9 @@
                             style={{
                                 left: `${block.x}%`,
                                 top: `${block.y}%`,
-                                width: block.type === 'image' ? `${block.width}px` : 'auto',
-                                fontSize: block.type === 'text' ? `${block.fontSize}px` : undefined,
+                                width: (block.type === 'image' || block.type === 'grid_list' || block.type === 'qr_code') ? `${block.width}px` : 'auto',
+                                height: (block.type === 'grid_list') ? `${block.height}px` : 'auto',
+                                fontSize: (block.type === 'text' || block.type === 'grid_list') ? `${block.fontSize}px` : undefined,
                                 fontWeight: block.fontWeight,
                                 color: block.color,
                                 writingMode: block.writingMode,
@@ -182,13 +183,13 @@
                                     flexWrap: 'wrap',
                                     alignContent: 'flex-start'
                                 }}>
-                                    {/* 預覽時顯示 CSV 實際資料，編輯時顯示假資料預覽格線 */}
-                                    {(showPreview && batchData.length > 0 ? batchData : Array.from({ length: block.gridRows * block.gridCols })).map((item, idx) => {
+                                    {/* 優先顯示 CSV 實際資料，若無資料則在編輯時顯示預設文字 */}
+                                    {((batchData.length > 0 ? batchData : Array.from({ length: block.gridRows * block.gridCols }))).map((item, idx) => {
                                         // 只渲染這個區塊裝得下的數量 (除非我們後續做分頁)
                                         if (idx >= block.gridRows * block.gridCols) return null;
 
-                                        let cellText = showPreview && batchData.length > 0 ? block.template : "信士 OOO";
-                                        if (showPreview && batchData.length > 0) {
+                                        let cellText = (batchData.length > 0) ? block.template : "信士 OOO";
+                                        if (batchData.length > 0) {
                                             Object.keys(item).forEach(k => {
                                                 cellText = cellText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), item[k] || '');
                                             });
@@ -695,17 +696,24 @@
             const updateBlock = (k, v) => setBlocks(p => p.map(b => b.id === selectedId ? { ...b, [k]: v } : b));
             const toggleLock = (id) => setBlocks(p => p.map(b => b.id === id ? { ...b, locked: !b.locked } : b));
             const deleteBlock = () => { if (selectedId && !blocks.find(b => b.id === selectedId)?.locked) { setBlocks(p => p.filter(b => b.id !== selectedId)); setSelectedId(null); } };
+            const handleClearCanvas = () => {
+                if (blocks.length === 0) return;
+                if (confirm('確定要清空畫布上所有的內容嗎？')) {
+                    setBlocks([]);
+                    setSelectedId(null);
+                }
+            };
             const addBlock = (type, content = '', x = 50, y = 50) => {
                 const newB = { id: `b${Date.now()}`, type, x, y, text: content || '新文字', fontSize: 24, writingMode: paperOrientation === 'landscape' ? 'horizontal-tb' : 'vertical-rl', color: '#000', locked: false, src: content, width: 200, opacity: 1 };
 
                 // V2 大表文專用設定
                 if (type === 'grid_list') {
-                    newB.width = 400;   // 預設寬度 (px)
-                    newB.height = 300;  // 預設高度 (px) (CSS 會再轉)
-                    newB.gridRows = 5;  // 每一直欄想塞幾個人
-                    newB.gridCols = 10; // 總共有幾欄
+                    newB.width = 300;   // 預設寬度 (px)
+                    newB.height = 100;  // 預設高度 (px)
+                    newB.gridRows = 1;  // 每一直欄想塞幾個人
+                    newB.gridCols = 2; // 總共有幾欄
                     newB.template = "{{姓名}}"; // 預設變數
-                    newB.showSeparator = true; // 預設顯示紅點分隔
+                    newB.showSeparator = false; // 預設不顯示紅點分隔
                 }
 
                 // V2 QR Code 專用設定
@@ -767,15 +775,33 @@
             const alignBlockCenter = (id) => setBlocks(prev => prev.map(b => b.id === id ? { ...b, x: 50 } : b));
 
             const addStamp = (text) => {
-                const chars = text.padEnd(4, ' ').split('');
+                const is9Chars = text.length > 4;
+                const size = is9Chars ? 3 : 2;
+                const fontSize = is9Chars ? 22 : 32;
+                const chars = text.split('');
+                const paddedChars = Array.from({ length: size * size }, (_, i) => chars[i] || ' ');
+
+                let textElements = '';
+                const step = 76 / size;
+                const start = 12;
+
+                for (let col = 0; col < size; col++) {
+                    for (let row = 0; row < size; row++) {
+                        const idx = col * size + row;
+                        const char = paddedChars[idx];
+                        // 道教印章由右至左：第一組字在最右側
+                        const x = 100 - (start + (col + 0.5) * step);
+                        const y = start + (row + 0.5) * step;
+                        textElements += `<text x="${x}" y="${y}" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="${fontSize}" font-weight="bold" fill="#b91c1c" text-anchor="middle" dominant-baseline="central">${char}</text>`;
+                    }
+                }
+
                 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
                     <rect x="5" y="5" width="90" height="90" fill="none" stroke="#b91c1c" stroke-width="6"/>
                     <rect x="12" y="12" width="76" height="76" fill="none" stroke="#b91c1c" stroke-width="2"/>
-                    <text x="80" y="40" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[0]}</text>
-                    <text x="80" y="80" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[1]}</text>
-                    <text x="40" y="40" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[2]}</text>
-                    <text x="40" y="80" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[3]}</text>
+                    ${textElements}
                 </svg>`;
+
                 const image64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
                 addBlock('image', image64, 40, 40);
             };
@@ -896,7 +922,7 @@
                                                         transformOrigin: 'top center',
                                                         flexShrink: 0
                                                     }}>
-                                                    <PaperContent blocks={pageBlocks} showPreview={true} />
+                                                    <PaperContent blocks={pageBlocks} showPreview={true} batchData={batchData} />
                                                 </div>
                                             )
                                         })
@@ -913,6 +939,7 @@
                                                 blocks={currentBlocksDisplay}
                                                 selectedId={null}
                                                 showPreview={true}
+                                                batchData={batchData}
                                                 onMouseDown={null}
                                                 onTouchStart={null}
                                                 onContextMenu={null}
@@ -1320,6 +1347,8 @@
                                 <button onClick={undo} disabled={historyIndex === 0} className={`p-2 rounded ${historyIndex === 0 ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100'}`} title="上一步 (Undo)"><Icon name="undo" /></button>
                                 <button onClick={redo} disabled={historyIndex === history.length - 1} className={`p-2 rounded ${historyIndex === history.length - 1 ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100'}`} title="下一步 (Redo)"><Icon name="redo" /></button>
                                 <div className="w-px h-5 bg-gray-300 mx-1"></div>
+                                <button onClick={handleClearCanvas} className="p-2 rounded hover:bg-red-50 text-red-500" title="全部清空 (全部空白)"><Icon name="trash" /></button>
+                                <div className="w-px h-5 bg-gray-300 mx-1"></div>
                                 <button onClick={handleSaveProject} className="p-2 rounded hover:bg-gray-100" title="儲存專案範本 (.json)"><Icon name="save" /></button>
                                 <button onClick={() => projectInputRef.current.click()} className="p-2 rounded hover:bg-gray-100" title="載入專案範本 (.json)"><Icon name="folder" /></button>
                             </div>
@@ -1423,10 +1452,11 @@
                                         <span>道教常用印章 (點擊加入)</span>
                                         <button onClick={() => setSnapToGrid(!snapToGrid)} className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${snapToGrid ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}><Icon name="grid" size={14} /> {snapToGrid ? '網格吸附 ON' : '網格吸附 OFF'}</button>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2 mb-2">
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
                                         <button onClick={() => addStamp('道經師寶')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">道經<br />師寶</button>
                                         <button onClick={() => addStamp('太上老君')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">太上<br />老君</button>
                                         <button onClick={() => addStamp('玄天上帝')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">玄天<br />上帝</button>
+                                        <button onClick={() => addStamp('總制總巡王池府王爺')} className="border rounded p-2 text-[10px] flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">總制總巡<br />池府王爺</button>
                                     </div>
                                     <button onClick={() => watermarkInputRef.current.click()} className="w-full bg-indigo-50 text-indigo-700 py-2 border border-indigo-200 rounded text-xs flex justify-center items-center gap-1"><Icon name="image" size={14} /> 設定全頁防偽浮水印</button>
                                 </div>
@@ -1446,7 +1476,10 @@
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button onClick={() => setBatchPreviewIndex(p => Math.max(0, p - 1))} disabled={batchPreviewIndex <= 0} className="px-2 py-1 bg-gray-100 rounded border">上一筆</button>
-                                                <span className="flex-1 text-center font-bold">預覽：第 {batchPreviewIndex + 1} 筆</span>
+                                                <div className="flex-1 flex flex-col items-center">
+                                                    <span className="font-bold">預覽：第 {batchPreviewIndex + 1} 筆</span>
+                                                    <span className="text-blue-600 font-bold overflow-hidden truncate max-w-[120px]">{batchData[batchPreviewIndex]?.姓名 || '未命名'}</span>
+                                                </div>
                                                 <button onClick={() => setBatchPreviewIndex(p => Math.min(batchData.length - 1, p + 1))} disabled={batchPreviewIndex >= batchData.length - 1} className="px-2 py-1 bg-gray-100 rounded border">下一筆</button>
                                             </div>
                                             <p className="text-[10px] text-gray-500 text-center">排版時輸入 <b>{`{{欄位名稱}}`}</b>，系統將自動套用資料。</p>
@@ -1472,6 +1505,13 @@
 
                     {/* 編輯器畫布 */}
                     <div className="flex-1 bg-gray-200 overflow-hidden relative" onClick={handlePaperClick}>
+                        {/* 套印資料狀態提示 */}
+                        {batchData.length > 0 && batchPreviewIndex >= 0 && (
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-bounce">
+                                <Icon name="check" color="white" size={16} />
+                                <span className="font-bold">預覽模式：正在套用 {batchData[batchPreviewIndex]?.姓名 || '未命名'} 的資料</span>
+                            </div>
+                        )}
                         <div className="absolute inset-0 flex flex-col items-center justify-start pt-8 pb-32 overflow-auto">
 
                             <div ref={paperRef} onContextMenu={e => handleContextMenu(e, null)} onTouchStart={e => handlePaperTouchStart(e, null)} onDoubleClick={handlePaperDoubleClick}
@@ -1492,6 +1532,7 @@
                                     blocks={currentBlocksDisplay}
                                     selectedId={selectedId}
                                     showPreview={false}
+                                    batchData={batchData}
                                     onMouseDown={handleMouseDown}
                                     onTouchStart={handleTouchStart}
                                     onContextMenu={handleContextMenu}
