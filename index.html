@@ -42,54 +42,81 @@
             scrollbar-width: none;
         }
 
-        /* 列印樣式控制 */
+        /* 列印樣式控制：極致清潔版 */
         @media print {
             @page {
                 margin: 0;
+                size: auto;
             }
 
-            body {
-                background: white;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .print\:hidden {
+            /* 隱藏主介面組件 */
+            header,
+            nav,
+            footer,
+            aside,
+            .modal-header,
+            .modal-footer,
+            button,
+            .print\:hidden,
+            [class*="print:hidden"] {
                 display: none !important;
             }
 
-            /* 列印時強制歸零與去背 */
-            .paper-bg {
-                background-color: transparent !important;
-            }
-
-            .print-override {
-                position: static !important;
-                background: transparent !important;
-                width: auto !important;
-                height: auto !important;
-                max-width: none !important;
-                max-height: none !important;
-                padding: 0 !important;
+            /* 核心修正：絕對零邊距對齊，解除所有父層容器的位移因素 */
+            html,
+            body {
                 margin: 0 !important;
-                overflow: visible !important;
-                display: block !important;
+                padding: 0 !important;
+                background: #fff !important;
             }
 
-            .print-page {
-                position: relative !important;
+            #root,
+            #root>div,
+            .fixed,
+            .inset-0,
+            .print-override,
+            [class*="max-h"],
+            [class*="overflow-"] {
+                height: auto !important;
+                min-height: 0 !important;
+                max-height: none !important;
+                overflow: visible !important;
+                position: static !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                display: block !important;
+                width: 100% !important;
+                gap: 0 !important;
                 transform: none !important;
                 box-shadow: none !important;
-                margin: 0 auto !important;
-                border: none !important;
-                page-break-after: always !important;
-                page-break-inside: avoid !important;
-                left: auto !important;
-                top: auto !important;
             }
 
-            .print-page:last-child {
+            /* 紙張樣式：絕對定位補償，確保內容不跑位 */
+            .paper-bg {
+                background-color: #fff !important;
+                margin: 0 !important;
+                /* 取消置中，改為絕對靠邊 */
+                padding: 0 !important;
+                box-shadow: none !important;
+                transform: none !important;
+                page-break-after: always !important;
+                page-break-before: auto !important;
+                page-break-inside: avoid !important;
+                display: block !important;
+                position: relative !important;
+                visibility: visible !important;
+                left: 0 !important;
+                top: 0 !important;
+            }
+
+            .paper-bg:last-child {
                 page-break-after: auto !important;
+            }
+
+            svg,
+            img {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
     </style>
@@ -865,38 +892,82 @@
             const exportPDF = () => {
                 if (!previewContainerRef.current) return;
 
-                alert("正在產生高畫質 PDF，請稍候...");
-                const clone = document.createElement('div');
+                // 建立載入遮罩
+                const loadingOverlay = document.createElement('div');
+                loadingOverlay.style.position = 'fixed';
+                loadingOverlay.style.inset = '0';
+                loadingOverlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
+                loadingOverlay.style.zIndex = '10000';
+                loadingOverlay.style.display = 'flex';
+                loadingOverlay.style.flexDirection = 'column';
+                loadingOverlay.style.alignItems = 'center';
+                loadingOverlay.style.justifyContent = 'center';
+                loadingOverlay.style.color = 'white';
+                loadingOverlay.innerHTML = `
+                    <div style="font-size: 24px; font-weight: bold; margin-bottom: 15px;">💎 進階渲染引擎啟動中...</div>
+                    <div style="font-size: 16px; opacity: 0.8;">正在產出高畫質多頁 PDF，請勿在此期間關閉視窗。</div>
+                    <div style="margin-top: 20px; font-size: 12px; opacity: 0.5;">（預計耗時 5-10 秒）</div>
+                `;
+                document.body.appendChild(loadingOverlay);
 
-                const originalPages = previewContainerRef.current.querySelectorAll('.print-page');
-                originalPages.forEach(node => {
+                // 建立渲染專用的「頂層」容器
+                const renderContainer = document.createElement('div');
+                renderContainer.style.position = 'fixed'; // 使用 fixed 避免捲動影響
+                renderContainer.style.left = '0';
+                renderContainer.style.top = '0';
+                renderContainer.style.width = `${dimsMM.w}mm`;
+                renderContainer.style.height = 'auto'; // 自適應總高度
+                renderContainer.style.backgroundColor = '#ffffff';
+                renderContainer.style.zIndex = '9999';
+                renderContainer.style.visibility = 'visible';
+                renderContainer.style.overflow = 'visible';
+                renderContainer.className = 'pdf-render-root'; // 加入特定 class 避免被 global CSS 誤殺
+
+                const originalPages = previewContainerRef.current.querySelectorAll('.paper-bg');
+                originalPages.forEach((node) => {
                     const clonedPage = node.cloneNode(true);
                     clonedPage.style.transform = 'none';
                     clonedPage.style.boxShadow = 'none';
                     clonedPage.style.margin = '0';
-                    clonedPage.className = clonedPage.className.replace('single-print-page', '');
-                    clone.appendChild(clonedPage);
+                    clonedPage.style.padding = '0';
+                    clonedPage.style.position = 'relative';
+                    clonedPage.style.backgroundColor = '#ffffff';
+                    clonedPage.style.overflow = 'hidden';
+                    clonedPage.style.visibility = 'visible'; // 強制顯示
+
+                    renderContainer.appendChild(clonedPage);
                 });
 
-                clone.style.position = 'absolute';
-                clone.style.left = '-9999px';
-                document.body.appendChild(clone);
+                document.body.appendChild(renderContainer);
 
                 const opt = {
                     margin: 0,
                     filename: `疏文_${new Date().getTime()}.pdf`,
-                    image: { type: 'jpeg', quality: 1.0 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        scrollY: 0, // 重要：強制從頂部開始擷取
+                        scrollX: 0,
+                        backgroundColor: '#ffffff',
+                    },
                     jsPDF: { unit: 'mm', format: paperSize.toLowerCase(), orientation: paperOrientation },
                     pagebreak: { mode: 'css' }
                 };
 
-                html2pdf().set(opt).from(clone).save().then(() => {
-                    document.body.removeChild(clone);
-                }).catch(err => {
-                    console.error("PDF Export Error: ", err);
-                    document.body.removeChild(clone);
-                });
+                // 給予 2 秒讓 DOM 與圖片完成完全渲染
+                setTimeout(() => {
+                    html2pdf().set(opt).from(renderContainer).save().then(() => {
+                        if (renderContainer.parentNode) document.body.removeChild(renderContainer);
+                        if (loadingOverlay.parentNode) document.body.removeChild(loadingOverlay);
+                    }).catch(err => {
+                        console.error("PDF Export Error: ", err);
+                        if (renderContainer.parentNode) document.body.removeChild(renderContainer);
+                        if (loadingOverlay.parentNode) document.body.removeChild(loadingOverlay);
+                        alert("PDF 產出異常，目前最穩定的方式是點擊旁邊的「開啟列印」按鈕，並在印表機選擇「另存為 PDF」。");
+                    });
+                }, 2000);
             };
 
             const activeBlock = blocks.find(b => b.id === selectedId);
@@ -924,11 +995,18 @@
                     {showPreview && (
                         <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center p-4 print-override">
                             <div className="bg-white rounded-lg p-4 w-full max-w-xl flex flex-col max-h-[90vh] print-override">
-                                <div className="flex justify-between items-center mb-2 pb-2 border-b print:hidden">
+                                <div className="flex justify-between items-center mb-2 pb-2 border-b print:hidden modal-header">
                                     <h3 className="font-bold">預覽 (將印出以下內容)</h3>
                                     <button onClick={() => setShowPreview(false)}><Icon name="x" /></button>
                                 </div>
                                 <div ref={previewContainerRef} className="flex-1 overflow-auto bg-gray-300 p-4 flex flex-col items-center gap-8 print-override">
+                                    <div className="bg-blue-50 border border-blue-200 p-3 rounded text-blue-800 text-xs mb-4 flex items-start gap-2 print:hidden shadow-sm">
+                                        <Icon name="check" size={16} className="mt-0.5 flex-shrink-0" />
+                                        <div>
+                                            <p className="font-bold mb-1">💡 穩定產出密技：</p>
+                                            <p>若匯出 PDF 出現空白，請直接點擊藍色按鈕 <b>「穩定產出」</b>，在印表機目標選擇 <b>「另存為 PDF」</b>。這是目前最清晰、絕對成功的方案！</p>
+                                        </div>
+                                    </div>
                                     {isBatchPrint && batchData.length > 0 ? (
                                         batchData.map((row, idx) => {
                                             const pageBlocks = blocks.map(b => {
@@ -972,12 +1050,12 @@
                                         </div>
                                     )}
                                 </div>
-                                <div className="mt-4 flex gap-2 print:hidden flex-wrap">
+                                <div className="mt-4 flex gap-2 print:hidden flex-wrap modal-footer">
                                     <button onClick={() => setShowPreview(false)} className="flex-1 min-w-[100px] py-3 border rounded font-bold">返回編輯</button>
-                                    <button onClick={exportPDF} className="flex-1 min-w-[120px] py-3 bg-green-600 text-white rounded font-bold flex justify-center items-center gap-2">
-                                        <Icon name="save" color="white" /> 匯出 PDF
+                                    <button onClick={exportPDF} className="flex-1 min-w-[120px] py-3 bg-gray-100 text-gray-700 border rounded font-bold flex justify-center items-center gap-2">
+                                        <Icon name="save" /> 匯出 PDF
                                     </button>
-                                    <button onClick={() => { window.print() }} className="flex-1 min-w-[120px] py-3 bg-blue-600 text-white rounded font-bold flex justify-center items-center gap-2">
+                                    <button onClick={() => { window.print() }} className="flex-[1.5] min-w-[140px] py-3 bg-blue-600 text-white rounded font-bold flex justify-center items-center gap-2 shadow-lg scale-105 transition-transform hover:scale-110">
                                         <Icon name="printer" color="white" /> 開啟列印
                                     </button>
                                     <button onClick={() => { setShowPreview(false); setShowTeleprompter(true); }} className="w-full py-3 bg-purple-900 text-yellow-400 border border-yellow-600 rounded font-bold flex justify-center items-center gap-2 shadow-[0_0_10px_rgba(234,179,8,0.3)] mt-2">
@@ -1539,10 +1617,10 @@
                     </div>
 
                     {/* 編輯器畫布 */}
-                    <div className="flex-1 bg-gray-200 overflow-hidden relative" onClick={handlePaperClick}>
+                    <div className="flex-1 bg-gray-200 overflow-hidden relative print:hidden" onClick={handlePaperClick}>
                         {/* 套印資料狀態提示 */}
                         {batchData.length > 0 && batchPreviewIndex >= 0 && (
-                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-bounce">
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-bounce print:hidden">
                                 <Icon name="check" color="white" size={16} />
                                 <span className="font-bold">預覽模式：正在套用 {batchData[batchPreviewIndex]?.姓名 || '未命名'} 的資料</span>
                             </div>
