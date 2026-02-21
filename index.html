@@ -1,33 +1,42 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>道教疏文排版系統 (網頁版)</title>
-    
+
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- 引入 React 與 ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
+
     <!-- 引入 Babel 用於瀏覽器內編譯 JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 高級版所需套件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/lunar-javascript/lunar.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 
     <style>
         /* 全局字體設定 */
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap');
-        
-        body { 
-            font-family: "KaiTi", "BiauKai", "DFKai-SB", "標楷體", "Noto Serif TC", serif; 
-            overscroll-behavior: none; /* 防止手機下拉重整 */
+
+        body {
+            font-family: "KaiTi", "BiauKai", "DFKai-SB", "標楷體", "Noto Serif TC", serif;
+            overscroll-behavior: none;
+            /* 防止手機下拉重整 */
         }
 
         /* 隱藏捲軸但保留功能 */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
+
         .scrollbar-hide {
             -ms-overflow-style: none;
             scrollbar-width: none;
@@ -35,28 +44,57 @@
 
         /* 列印樣式控制 */
         @media print {
-            @page { margin: 0; }
-            body { 
-                background: white; 
-                -webkit-print-color-adjust: exact; 
+            @page {
+                margin: 0;
+            }
+
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            .print\:hidden { display: none !important; }
-            
+
+            .print\:hidden {
+                display: none !important;
+            }
+
             /* 列印時強制歸零與去背 */
-            .paper-bg { 
-                position: absolute !important;
-                top: 0 !important; left: 0 !important;
-                /* 尺寸由 JS 動態注入 */
-                transform: none !important;
+            .paper-bg {
                 background-color: transparent !important;
-                box-shadow: none !important;
+            }
+
+            .print-override {
+                position: static !important;
+                background: transparent !important;
+                width: auto !important;
+                height: auto !important;
+                max-width: none !important;
+                max-height: none !important;
+                padding: 0 !important;
                 margin: 0 !important;
-                overflow: hidden !important;
+                overflow: visible !important;
+                display: block !important;
+            }
+
+            .print-page {
+                position: relative !important;
+                transform: none !important;
+                box-shadow: none !important;
+                margin: 0 auto !important;
+                border: none !important;
+                page-break-after: always !important;
+                page-break-inside: avoid !important;
+                left: auto !important;
+                top: auto !important;
+            }
+
+            .print-page:last-child {
+                page-break-after: auto !important;
             }
         }
     </style>
 </head>
+
 <body class="bg-gray-200 h-screen w-screen overflow-hidden select-none touch-none text-gray-800">
     <div id="root" class="h-full w-full"></div>
 
@@ -66,28 +104,37 @@
         // --- 圖示元件 ---
         const Icon = ({ name, size = 18, color = "currentColor", className = "" }) => {
             const paths = {
-                printer: <><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></>,
-                settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
-                trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
-                reset: <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></>,
-                check: <polyline points="20 6 9 17 4 12"/>,
-                menu: <><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></>,
-                edit: <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
-                copy: <><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
-                paste: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></>,
-                layout: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></>,
-                zoomIn: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></>,
-                zoomOut: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>,
-                layers: <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
-                plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
-                lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
-                unlock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></>,
-                image: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></>,
-                x: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
-                chevronUp: <polyline points="18 15 12 9 6 15"/>,
-                chevronDown: <polyline points="6 9 12 15 18 9"/>,
-                arrowRight: <><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>,
-                arrowDown: <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></>
+                printer: <><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>,
+                settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+                trash: <><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>,
+                reset: <><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></>,
+                check: <polyline points="20 6 9 17 4 12" />,
+                menu: <><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></>,
+                edit: <><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></>,
+                copy: <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
+                paste: <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /></>,
+                layout: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></>,
+                zoomIn: <><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></>,
+                zoomOut: <><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></>,
+                layers: <><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>,
+                plus: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
+                lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+                unlock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></>,
+                image: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></>,
+                x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+                chevronUp: <polyline points="18 15 12 9 6 15" />,
+                chevronDown: <polyline points="6 9 12 15 18 9" />,
+                arrowRight: <><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></>,
+                arrowDown: <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>,
+                undo: <><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></>,
+                redo: <><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></>,
+                save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>,
+                folder: <><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></>,
+                alignCenter: <><line x1="12" y1="2" x2="12" y2="22" /><rect x="6" y="8" width="12" height="8" rx="1" /></>,
+                layerUp: <><polyline points="18 15 12 9 6 15" /><line x1="12" y1="9" x2="12" y2="21" /></>,
+                layerDown: <><polyline points="6 9 12 15 18 9" /><line x1="12" y1="3" x2="12" y2="15" /></>,
+                grid: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" /></>,
+                scan: <><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /></>
             };
             return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{paths[name] || null}</svg>;
         };
@@ -124,10 +171,44 @@
                                 fontFamily: '"KaiTi", "BiauKai", "DFKai-SB", "楷體", serif'
                             }}
                         >
-                            {block.type === 'text' ? block.text : (
-                                <img src={block.src} alt="content" className="w-full h-auto pointer-events-none select-none" />
+                            {block.type === 'text' && block.text}
+                            {block.type === 'image' && <img src={block.src} alt="content" className="w-full h-auto pointer-events-none select-none" />}
+                            {block.type === 'qr_code' && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=${Math.round(block.width)}x${Math.round(block.width)}&data=${encodeURIComponent(block.url)}`} alt="QR Code" className="w-full h-auto pointer-events-none select-none" />}
+
+                            {/* 高級版 V2：連續名單動態網格 */}
+                            {block.type === 'grid_list' && (
+                                <div className="w-full h-full flex" style={{
+                                    flexDirection: block.writingMode.includes('vertical') ? 'row-reverse' : 'column',
+                                    flexWrap: 'wrap',
+                                    alignContent: 'flex-start'
+                                }}>
+                                    {/* 預覽時顯示 CSV 實際資料，編輯時顯示假資料預覽格線 */}
+                                    {(showPreview && batchData.length > 0 ? batchData : Array.from({ length: block.gridRows * block.gridCols })).map((item, idx) => {
+                                        // 只渲染這個區塊裝得下的數量 (除非我們後續做分頁)
+                                        if (idx >= block.gridRows * block.gridCols) return null;
+
+                                        let cellText = showPreview && batchData.length > 0 ? block.template : "信士 OOO";
+                                        if (showPreview && batchData.length > 0) {
+                                            Object.keys(item).forEach(k => {
+                                                cellText = cellText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), item[k] || '');
+                                            });
+                                        }
+
+                                        return (
+                                            <div key={idx} className="flex flex-col items-center justify-start border-dashed border-gray-300" style={{
+                                                width: block.writingMode.includes('vertical') ? `${100 / block.gridCols}%` : '100%',
+                                                height: block.writingMode.includes('vertical') ? '100%' : `${100 / block.gridRows}%`,
+                                                borderWidth: !showPreview ? '1px' : '0px',
+                                                padding: '2px'
+                                            }}>
+                                                {block.showSeparator && idx > 0 && <div className="text-red-600 text-[8px] mb-1">●</div>}
+                                                <div style={{ writingMode: block.writingMode }}>{cellText}</div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             )}
-                            
+
                             {!showPreview && block.locked && (
                                 <div className="absolute -top-2 -right-2 bg-white rounded-full p-0.5 shadow print:hidden">
                                     <Icon name="lock" color="#ef4444" size={14} />
@@ -135,7 +216,7 @@
                             )}
                         </div>
                     ))}
-                    
+
                     {!showPreview && (
                         <div className="absolute inset-4 border-4 border-double border-red-800 pointer-events-none opacity-50 z-0"></div>
                     )}
@@ -157,22 +238,315 @@
             const [selectedId, setSelectedId] = useState(null);
             const [paperOrientation, setPaperOrientation] = useState('landscape'); // 預設橫式
             const [paperSize, setPaperSize] = useState('A4');
-            const [viewScale, setViewScale] = useState(0.5); 
+            const [viewScale, setViewScale] = useState(0.5);
             const [autoScale, setAutoScale] = useState(true);
             const [isToolsOpen, setIsToolsOpen] = useState(true);
             const [activeTab, setActiveTab] = useState('layers');
             const [clipboard, setClipboard] = useState(null);
             const [showPreview, setShowPreview] = useState(false);
-            const [guides, setGuides] = useState([]); 
+            const [guides, setGuides] = useState([]);
             const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, blockId: null, isBackground: false });
-            
+
             const [isDragging, setIsDragging] = useState(false);
             const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+            const [snapToGrid, setSnapToGrid] = useState(true);
             const paperRef = useRef(null);
-            const previewContainerRef = useRef(null); 
+            const previewContainerRef = useRef(null);
             const fileInputRef = useRef(null);
+            const projectInputRef = useRef(null);
+            const watermarkInputRef = useRef(null);
+            const csvInputRef = useRef(null);
             const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
             const longPressTimer = useRef(null);
+
+            // 批次資料與說明視窗狀態
+            const [batchData, setBatchData] = useState([]);
+            const [batchPreviewIndex, setBatchPreviewIndex] = useState(-1);
+            const [isBatchPrint, setIsBatchPrint] = useState(false);
+            const [showBatchHelp, setShowBatchHelp] = useState(false);
+
+            // --- 高級版 V3：本機信眾名冊系統 (IndexedDB via localforage) ---
+            const [showDbManager, setShowDbManager] = useState(false);
+            const [dbData, setDbData] = useState([]);
+            const [dbSearch, setDbSearch] = useState('');
+            const [dbSelectedIndices, setDbSelectedIndices] = useState(new Set()); // 紀錄勾選的列 index
+
+            // 初始化載入本機資料庫
+            useEffect(() => {
+                const loadDbData = async () => {
+                    try {
+                        const storedData = await localforage.getItem('temple_member_db');
+                        if (storedData) {
+                            setDbData(storedData);
+                        }
+                    } catch (err) {
+                        console.error('無法載入本機名冊庫', err);
+                    }
+                };
+                loadDbData();
+            }, []);
+
+            // 存入本機資料庫
+            const saveDbData = async (newData) => {
+                try {
+                    await localforage.setItem('temple_member_db', newData);
+                    setDbData(newData);
+                } catch (err) {
+                    console.error('無法儲存名冊至本機', err);
+                    alert('儲存名冊失敗，您的儲存空間可能已滿或瀏覽器封鎖了操作。');
+                }
+            };
+
+            // DB 操作函式群
+            const handleAddDbRow = () => {
+                const newRow = { id: Date.now().toString(), 姓名: '新信徒', 聯絡電話: '', 地址: '', 備註: '' };
+                saveDbData([newRow, ...dbData]);
+            };
+
+            const handleUpdateDbRow = (id, field, value) => {
+                const newData = dbData.map(row => row.id === id ? { ...row, [field]: value } : row);
+                saveDbData(newData);
+            };
+
+            const handleDeleteDbSelected = () => {
+                if (dbSelectedIndices.size === 0) return;
+                if (!confirm(`確定要刪除勾選的 ${dbSelectedIndices.size} 筆資料嗎？此操作無法復原！`)) return;
+                const newData = dbData.filter(row => !dbSelectedIndices.has(row.id));
+                saveDbData(newData);
+                setDbSelectedIndices(new Set());
+            };
+
+            const handleDbToggleSelect = (id) => {
+                const newSet = new Set(dbSelectedIndices);
+                if (newSet.has(id)) newSet.delete(id);
+                else newSet.add(id);
+                setDbSelectedIndices(newSet);
+            };
+
+            const handleDbSelectAll = (filteredData) => {
+                if (dbSelectedIndices.size === filteredData.length && filteredData.length > 0) {
+                    setDbSelectedIndices(new Set()); // 全部取消
+                } else {
+                    setDbSelectedIndices(new Set(filteredData.map(d => d.id))); // 全選目前的 filtered
+                }
+            };
+
+            // 將外部匯入的 batchData 同步覆蓋到儲存庫中 (可選擇合併或覆蓋)
+            const handleSyncCsvToDb = () => {
+                if (!batchData || batchData.length === 0) {
+                    alert('目前沒有已載入的 CSV 名單！請先在右下角匯入 CSV。');
+                    return;
+                }
+                if (confirm(`是否要將目前預覽中的 ${batchData.length} 筆 CSV 資料匯入本機信眾名冊？\n（系統將自動加上 ID 標籤並附加在現有名單最上方）`)) {
+                    // 為了確保有唯一識別碼，對 CSV 進來的資料加上 id
+                    const processData = batchData.map((row, i) => ({ id: `csv_${Date.now()}_${i}`, ...row }));
+                    saveDbData([...processData, ...dbData]);
+                    alert('匯入成功！您可以到左側選單開啟「本機信眾名冊」查看。');
+                }
+            };
+
+            // 從 DB 勾選項目直接載入到列印預覽 (Batch Data) 中
+            const handleLoadDbSelectionToPrint = () => {
+                if (dbSelectedIndices.size === 0) {
+                    alert('請先在左邊的方塊勾選要列印的信眾！');
+                    return;
+                }
+                const selectedData = dbData.filter(row => dbSelectedIndices.has(row.id));
+                setBatchData(selectedData);
+                setBatchPreviewIndex(0);
+                setShowDbManager(false);
+                alert(`已成功將勾選的 ${selectedData.length} 筆名單載入排版區！您現在可以點擊「批次預覽與列印」了。`);
+            };
+
+            // 根據關鍵字過濾的 DB 資料
+            const filteredDbData = React.useMemo(() => {
+                if (!dbSearch.trim()) return dbData;
+                const kw = dbSearch.toLowerCase();
+                return dbData.filter(row => {
+                    return Object.values(row).some(val => String(val).toLowerCase().includes(kw));
+                });
+            }, [dbData, dbSearch]);
+
+            // --- 高級版 V2：摺紙輔助線功能 ---
+            const [showFoldGuides, setShowFoldGuides] = useState(false);
+            const [foldCount, setFoldCount] = useState(7);
+
+            // --- 高級版 V2：法師專用大字報 / 讀稿機 ---
+            const [showTeleprompter, setShowTeleprompter] = useState(false);
+            const [teleprompterSize, setTeleprompterSize] = useState(64);
+            const [teleprompterTheme, setTeleprompterTheme] = useState('dark'); // 'dark' 或 'light'
+
+            // --- 高級版 V2/V4：雲端範本市集 ---
+            const [showTemplateMarket, setShowTemplateMarket] = useState(false);
+            const [activeStoreCategory, setActiveStoreCategory] = useState('ALL'); // 'ALL', '祈福', '拔薦', '節慶'
+            const [storeDetailItem, setStoreDetailItem] = useState(null); // 點擊卡片後展開的內頁資料
+
+            const TEMPLATE_DB = [
+                {
+                    id: 'tpl_basic_pray',
+                    name: '基本祈福消災文疏',
+                    desc: '最常見的標準祈福疏文，適合一般初一十五拜拜。',
+                    category: '祈福',
+                    author: '官方內建範本團隊',
+                    rating: 4.8,
+                    downloads: '15.2k',
+                    price: '免費',
+                    coverColor: 'bg-red-500',
+                    coverIcon: '🔥',
+                    blocks: [
+                        { id: 't1', type: 'text', text: "祈福消災文疏", x: 88, y: 15, fontSize: 48, writingMode: 'vertical-rl', color: '#b91c1c', fontWeight: 'bold', locked: false },
+                        { id: 't2', type: 'text', text: "伏以", x: 80, y: 18, fontSize: 24, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't3', type: 'text', text: "神恩浩蕩，澤被蒼生。\n今據\n居住於 台灣省OO市\n信士 OOO \n虔備香花果品。\n敢昭告於\n三清道祖 案前曰：\n誠惶誠恐，稽首頓首。\n伏願\n神光普照，元辰光彩。\n謹疏上聞。", x: 50, y: 18, fontSize: 24, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', lineHeight: '2em', locked: false },
+                        { id: 't4', type: 'text', text: "天運歲次 甲辰 年 正 月 十五 日", x: 18, y: 55, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't5', type: 'text', text: "具疏叩謝", x: 8, y: 75, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false }
+                    ]
+                },
+                {
+                    id: 'tpl_ghost_month',
+                    name: '中元普渡拔薦疏文',
+                    desc: '農曆七月普渡法會專用，含九玄七祖薦拔格式。',
+                    category: '拔薦',
+                    author: '天玉道長',
+                    rating: 4.9,
+                    downloads: '8.4k',
+                    price: '免費',
+                    coverColor: 'bg-indigo-600',
+                    coverIcon: '🪷',
+                    blocks: [
+                        { id: 't1', type: 'text', text: "中元普渡薦拔文疏", x: 88, y: 10, fontSize: 48, writingMode: 'vertical-rl', color: '#b91c1c', fontWeight: 'bold', locked: false },
+                        { id: 't2', type: 'text', text: "伏以", x: 80, y: 15, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't3', type: 'text', text: "太上慈悲，廣開甘露法門。\n今據\n台灣省OO市 陽世報恩人 OOO \n為超薦歷代九玄七祖、冤親債主。\n於農曆七月中元佳節，備辦豐盛百味齋食、金銀財寶。\n虔誠叩求\n太乙救苦天尊 拔度。\n伏願\n先靈得度，早登極樂。\n陽眷平安，百福駢臻。\n謹疏奉\n聞", x: 55, y: 15, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', lineHeight: '2em', locked: false },
+                        { id: 't4', type: 'text', text: "天運歲次 甲辰 年 七 月 十五 日", x: 20, y: 50, fontSize: 18, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't5', type: 'text', text: "陽世報恩人 叩首", x: 10, y: 70, fontSize: 18, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false }
+                    ]
+                },
+                {
+                    id: 'tpl_ansui',
+                    name: '謝太歲/安太歲文疏',
+                    desc: '年初安太歲或年底謝太歲專用格式。',
+                    category: '節慶',
+                    author: '官方內建範本團隊',
+                    rating: 4.7,
+                    downloads: '32.1k',
+                    price: '免費',
+                    coverColor: 'bg-yellow-500',
+                    coverIcon: '⭐',
+                    blocks: [
+                        { id: 't1', type: 'text', text: "安/謝太歲星君星君文疏", x: 88, y: 10, fontSize: 48, writingMode: 'vertical-rl', color: '#b91c1c', fontWeight: 'bold', locked: false },
+                        { id: 't2', type: 'text', text: "伏以", x: 80, y: 15, fontSize: 24, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't3', type: 'text', text: "星曜高懸，照臨下界。\n今據\n居住於 台灣省OO市\n信士 OOO 本命生於OO年OO月OO日\n本年沖犯太歲星君。\n今涓吉日良時，備辦清酌香花。\n虔誠恭請\n本年值年太歲星君 降臨受供。\n伏願\n星君默佑，災星退散，福星降臨。\n出入平安，吉瑞駢臻。\n謹疏奉\n聞", x: 50, y: 15, fontSize: 22, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', lineHeight: '2em', locked: false },
+                        { id: 't4', type: 'text', text: "天運歲次 甲辰 年 正 月 十五 日", x: 18, y: 55, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false },
+                        { id: 't5', type: 'text', text: "具疏叩謝", x: 8, y: 75, fontSize: 20, writingMode: 'vertical-rl', color: '#000000', fontWeight: 'normal', locked: false }
+                    ]
+                }
+            ];
+
+            const filteredStoreTemplates = React.useMemo(() => {
+                if (activeStoreCategory === 'ALL') return TEMPLATE_DB;
+                return TEMPLATE_DB.filter(t => t.category === activeStoreCategory);
+            }, [activeStoreCategory]);
+
+            // --- 高級版：Undo / Redo 歷史紀錄與儲存 ---
+            const [history, setHistory] = useState([initialBlocks]);
+            const [historyIndex, setHistoryIndex] = useState(0);
+            const historyTimerRef = useRef(null);
+
+            useEffect(() => {
+                if (isDragging) return;
+                if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+                historyTimerRef.current = setTimeout(() => {
+                    setHistory(prev => {
+                        const last = prev[historyIndex];
+                        if (JSON.stringify(last) === JSON.stringify(blocks)) return prev;
+                        const newHistory = prev.slice(0, historyIndex + 1);
+                        newHistory.push(blocks);
+                        if (newHistory.length > 50) newHistory.shift();
+                        setHistoryIndex(newHistory.length - 1);
+                        return newHistory;
+                    });
+                }, 500);
+            }, [blocks, isDragging, historyIndex]);
+
+            const undo = () => {
+                if (historyIndex > 0) {
+                    const newIndex = historyIndex - 1;
+                    setHistoryIndex(newIndex);
+                    setBlocks(history[newIndex]);
+                    setSelectedId(null);
+                }
+            };
+
+            const redo = () => {
+                if (historyIndex < history.length - 1) {
+                    const newIndex = historyIndex + 1;
+                    setHistoryIndex(newIndex);
+                    setBlocks(history[newIndex]);
+                    setSelectedId(null);
+                }
+            };
+
+            const handleSaveProject = () => {
+                const data = JSON.stringify({ version: 2, blocks: blocks });
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `疏文範本_${new Date().getTime()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleLoadProject = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        try {
+                            const parsed = JSON.parse(ev.target.result);
+                            const loadedBlocks = parsed.version ? parsed.blocks : parsed;
+                            setBlocks(loadedBlocks);
+                            setHistory([loadedBlocks]);
+                            setHistoryIndex(0);
+                            setSelectedId(null);
+                        } catch (err) {
+                            alert('檔案格式錯誤！');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+                e.target.value = '';
+            };
+
+            const handleLoadCSV = (e) => {
+                const f = e.target.files[0];
+                if (f) {
+                    Papa.parse(f, {
+                        header: true, skipEmptyLines: true,
+                        complete: function (results) {
+                            if (results.data && results.data.length > 0) {
+                                setBatchData(results.data); setBatchPreviewIndex(0);
+                                alert(`成功載入 ${results.data.length} 筆資料！\n請在文字中使用 {{欄位名稱}}（例如：{{姓名}}）作為變數。`);
+                            } else alert('CSV 裡面沒有資料！');
+                        },
+                        error: function () { alert('讀取 CSV 發生錯誤！'); }
+                    });
+                }
+                e.target.value = '';
+            };
+
+            const currentBlocksDisplay = React.useMemo(() => {
+                if (batchPreviewIndex >= 0 && batchData[batchPreviewIndex]) {
+                    const row = batchData[batchPreviewIndex];
+                    return blocks.map(b => {
+                        if (b.type === 'text') {
+                            let newText = b.text;
+                            Object.keys(row).forEach(key => { newText = newText.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), row[key] || ''); });
+                            return { ...b, text: newText };
+                        } return b;
+                    });
+                }
+                return blocks;
+            }, [blocks, batchData, batchPreviewIndex]);
 
             const getDims = () => {
                 const w = paperSize === 'A3' ? 297 : 210;
@@ -184,10 +558,10 @@
             useEffect(() => {
                 if (!autoScale || showPreview) return;
                 const handleResize = () => {
-                    const MM_TO_PX = 3.78; 
+                    const MM_TO_PX = 3.78;
                     const targetW = dimsMM.w * MM_TO_PX;
                     const screenW = window.innerWidth;
-                    const s = (screenW - 32) / targetW; 
+                    const s = (screenW - 32) / targetW;
                     setViewScale(Math.min(1.2, Math.max(0.15, s)));
                 };
                 handleResize();
@@ -201,7 +575,7 @@
                     const MM_TO_PX = 3.78;
                     const containerW = previewContainerRef.current.clientWidth;
                     const paperW = dimsMM.w * MM_TO_PX;
-                    const s = (containerW - 32) / paperW; 
+                    const s = (containerW - 32) / paperW;
                     setPreviewScale(Math.min(1, Math.max(0.2, s)));
                 }
             }, [showPreview, dimsMM]);
@@ -214,20 +588,22 @@
                 let newX = rawX - dragOffset.x;
                 let newY = rawY - dragOffset.y;
 
-                const SNAP_DIST = 1.5; 
                 let newGuides = [];
-                const targets = { x: [50], y: [50] }; 
-                
-                blocks.forEach(b => {
-                    if (b.id !== selectedId) {
-                        targets.x.push(b.x);
-                        targets.y.push(b.y);
-                    }
-                });
+                if (snapToGrid) {
+                    const SNAP_DIST = 1.5;
+                    const targets = { x: [50], y: [50] };
 
-                let snappedX = false, snappedY = false;
-                for (let tx of targets.x) { if (Math.abs(newX - tx) < SNAP_DIST) { newX = tx; newGuides.push({type:'v', pos:tx}); snappedX = true; break; } }
-                for (let ty of targets.y) { if (Math.abs(newY - ty) < SNAP_DIST) { newY = ty; newGuides.push({type:'h', pos:ty}); snappedY = true; break; } }
+                    blocks.forEach(b => {
+                        if (b.id !== selectedId) {
+                            targets.x.push(b.x);
+                            targets.y.push(b.y);
+                        }
+                    });
+
+                    let snappedX = false, snappedY = false;
+                    for (let tx of targets.x) { if (Math.abs(newX - tx) < SNAP_DIST) { newX = tx; newGuides.push({ type: 'v', pos: tx }); snappedX = true; break; } }
+                    for (let ty of targets.y) { if (Math.abs(newY - ty) < SNAP_DIST) { newY = ty; newGuides.push({ type: 'h', pos: ty }); snappedY = true; break; } }
+                }
 
                 setGuides(newGuides);
                 setBlocks(prev => prev.map(b => b.id === selectedId ? { ...b, x: newX, y: newY } : b));
@@ -264,7 +640,7 @@
                 }, 600);
 
                 if (id) handleStart(touch.clientX, touch.clientY, id);
-                if(window.innerWidth < 768) setIsToolsOpen(false);
+                if (window.innerWidth < 768) setIsToolsOpen(false);
             };
 
             const handleTouchMove = (e) => {
@@ -273,7 +649,7 @@
                     if (longPressTimer.current) clearTimeout(longPressTimer.current);
                 }
                 if (!isDragging) return;
-                if (e.cancelable) e.preventDefault(); 
+                if (e.cancelable) e.preventDefault();
                 moveBlock(touch.clientX, touch.clientY);
             };
 
@@ -292,24 +668,24 @@
 
             const handleContextMenu = (e, id) => {
                 e.preventDefault(); e.stopPropagation();
-                if(id) setSelectedId(id);
+                if (id) setSelectedId(id);
                 setContextMenu({ visible: true, x: e.clientX, y: e.clientY, blockId: id, isBackground: !id });
             };
 
             useEffect(() => {
-                const mm = (e) => { if(isDragging) { e.preventDefault(); moveBlock(e.clientX, e.clientY); } };
+                const mm = (e) => { if (isDragging) { e.preventDefault(); moveBlock(e.clientX, e.clientY); } };
                 const mu = () => { setIsDragging(false); setGuides([]); };
                 const tm = (e) => handleTouchMove(e);
                 const tu = () => handleTouchEnd();
 
-                if(isDragging) {
+                if (isDragging) {
                     window.addEventListener('mousemove', mm);
                     window.addEventListener('mouseup', mu);
                     window.addEventListener('touchmove', tm, { passive: false });
                     window.addEventListener('touchend', tu);
                 }
-                return () => { 
-                    window.removeEventListener('mousemove', mm); 
+                return () => {
+                    window.removeEventListener('mousemove', mm);
                     window.removeEventListener('mouseup', mu);
                     window.removeEventListener('touchmove', tm);
                     window.removeEventListener('touchend', tu);
@@ -318,9 +694,26 @@
 
             const updateBlock = (k, v) => setBlocks(p => p.map(b => b.id === selectedId ? { ...b, [k]: v } : b));
             const toggleLock = (id) => setBlocks(p => p.map(b => b.id === id ? { ...b, locked: !b.locked } : b));
-            const deleteBlock = () => { if (selectedId && !blocks.find(b=>b.id===selectedId)?.locked) { setBlocks(p => p.filter(b => b.id !== selectedId)); setSelectedId(null); } };
-            const addBlock = (type, content='', x=50, y=50) => {
-                const newB = { id: `b${Date.now()}`, type, x, y, text: content||'新文字', fontSize: 24, writingMode: paperOrientation==='landscape'?'horizontal-tb':'vertical-rl', color:'#000', locked:false, src:content, width:200, opacity:1 };
+            const deleteBlock = () => { if (selectedId && !blocks.find(b => b.id === selectedId)?.locked) { setBlocks(p => p.filter(b => b.id !== selectedId)); setSelectedId(null); } };
+            const addBlock = (type, content = '', x = 50, y = 50) => {
+                const newB = { id: `b${Date.now()}`, type, x, y, text: content || '新文字', fontSize: 24, writingMode: paperOrientation === 'landscape' ? 'horizontal-tb' : 'vertical-rl', color: '#000', locked: false, src: content, width: 200, opacity: 1 };
+
+                // V2 大表文專用設定
+                if (type === 'grid_list') {
+                    newB.width = 400;   // 預設寬度 (px)
+                    newB.height = 300;  // 預設高度 (px) (CSS 會再轉)
+                    newB.gridRows = 5;  // 每一直欄想塞幾個人
+                    newB.gridCols = 10; // 總共有幾欄
+                    newB.template = "{{姓名}}"; // 預設變數
+                    newB.showSeparator = true; // 預設顯示紅點分隔
+                }
+
+                // V2 QR Code 專用設定
+                if (type === 'qr_code') {
+                    newB.width = 150;
+                    newB.url = "https://forms.google.com/";
+                }
+
                 setBlocks([...blocks, newB]); setSelectedId(newB.id);
             };
             const handleImage = (e) => {
@@ -348,22 +741,111 @@
                 const rect = paperRef.current.getBoundingClientRect();
                 const x = ((e.clientX - rect.left) / rect.width) * 100;
                 const y = ((e.clientY - rect.top) / rect.height) * 100;
-                addBlock('text', '', x-5, y-2);
+                addBlock('text', '', x - 5, y - 2);
             };
             const handleMenuAction = (action, targetId = null) => {
                 const targetBlockId = targetId || contextMenu.blockId;
                 const targetBlock = blocks.find(b => b.id === targetBlockId);
-                switch(action) {
-                    case 'addText': if (paperRef.current) { const rect = paperRef.current.getBoundingClientRect(); addBlock('text', '', ((contextMenu.x - rect.left)/rect.width)*100, ((contextMenu.y - rect.top)/rect.height)*100); } break;
+                switch (action) {
+                    case 'addText': if (paperRef.current) { const rect = paperRef.current.getBoundingClientRect(); addBlock('text', '', ((contextMenu.x - rect.left) / rect.width) * 100, ((contextMenu.y - rect.top) / rect.height) * 100); } break;
                     case 'addImage': fileInputRef.current.click(); break;
                     case 'edit': setSelectedId(targetBlockId); setIsToolsOpen(true); break;
                     case 'copy': if (targetBlock) setClipboard(targetBlock); break;
-                    case 'paste': if (clipboard) { const nb={...clipboard,id:`b${Date.now()}`,x:clipboard.x+5,y:clipboard.y+5,locked:false};setBlocks([...blocks,nb]);setSelectedId(nb.id)}; break;
-                    case 'delete': if (!targetBlock?.locked) { setBlocks(p=>p.filter(b=>b.id!==targetBlockId)); setSelectedId(null); } else alert('已鎖定'); break;
+                    case 'paste': if (clipboard) { const nb = { ...clipboard, id: `b${Date.now()}`, x: clipboard.x + 5, y: clipboard.y + 5, locked: false }; setBlocks([...blocks, nb]); setSelectedId(nb.id) }; break;
+                    case 'delete': if (!targetBlock?.locked) { setBlocks(p => p.filter(b => b.id !== targetBlockId)); setSelectedId(null); } else alert('已鎖定'); break;
                     case 'toggleLock': toggleLock(targetBlockId); break;
+                    case 'bringToFront': bringToFront(targetBlockId); break;
+                    case 'sendToBack': sendToBack(targetBlockId); break;
+                    case 'alignCenterH': alignBlockCenter(targetBlockId); break;
                     default: break;
                 }
                 setContextMenu({ ...contextMenu, visible: false });
+            };
+
+            const bringToFront = (id) => setBlocks(prev => { const b = prev.find(x => x.id === id); return b ? [...prev.filter(x => x.id !== id), b] : prev; });
+            const sendToBack = (id) => setBlocks(prev => { const b = prev.find(x => x.id === id); return b ? [b, ...prev.filter(x => x.id !== id)] : prev; });
+            const alignBlockCenter = (id) => setBlocks(prev => prev.map(b => b.id === id ? { ...b, x: 50 } : b));
+
+            const addStamp = (text) => {
+                const chars = text.padEnd(4, ' ').split('');
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+                    <rect x="5" y="5" width="90" height="90" fill="none" stroke="#b91c1c" stroke-width="6"/>
+                    <rect x="12" y="12" width="76" height="76" fill="none" stroke="#b91c1c" stroke-width="2"/>
+                    <text x="80" y="40" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[0]}</text>
+                    <text x="80" y="80" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[1]}</text>
+                    <text x="40" y="40" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[2]}</text>
+                    <text x="40" y="80" font-family="'KaiTi', 'BiauKai', 'DFKai-SB', '標楷體', serif" font-size="32" font-weight="bold" fill="#b91c1c" text-anchor="end">${chars[3]}</text>
+                </svg>`;
+                const image64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+                addBlock('image', image64, 40, 40);
+            };
+
+            const addWatermark = (e) => {
+                const f = e.target.files[0];
+                if (f) {
+                    const r = new FileReader();
+                    r.onload = (ev) => {
+                        const newB = { id: `b${Date.now()}`, type: 'image', x: 25, y: 25, src: ev.target.result, width: 400, opacity: 0.15, locked: true };
+                        setBlocks(prev => [newB, ...prev]);
+                    };
+                    r.readAsDataURL(f);
+                }
+                e.target.value = '';
+            };
+
+            const insertLunarDate = () => {
+                try {
+                    const today = Lunar.fromDate(new Date());
+                    const yearStr = today.getYearInGanZhi();
+                    const monthStr = today.getMonthInChinese();
+                    const dayStr = today.getDayInChinese();
+                    const str = `天運歲次 ${yearStr} 年 ${monthStr} 月 ${dayStr} 日`;
+
+                    if (selectedId) {
+                        setBlocks(prev => prev.map(b => b.id === selectedId && b.type === 'text' ? { ...b, text: b.text + '\\n' + str } : b));
+                    } else {
+                        addBlock('text', str, 20, 50);
+                    }
+                } catch (e) {
+                    console.error("Lunar date conversion error", e);
+                }
+            };
+
+            const exportPDF = () => {
+                if (!previewContainerRef.current) return;
+
+                alert("正在產生高畫質 PDF，請稍候...");
+                const clone = document.createElement('div');
+
+                const originalPages = previewContainerRef.current.querySelectorAll('.print-page');
+                originalPages.forEach(node => {
+                    const clonedPage = node.cloneNode(true);
+                    clonedPage.style.transform = 'none';
+                    clonedPage.style.boxShadow = 'none';
+                    clonedPage.style.margin = '0';
+                    clonedPage.className = clonedPage.className.replace('single-print-page', '');
+                    clone.appendChild(clonedPage);
+                });
+
+                clone.style.position = 'absolute';
+                clone.style.left = '-9999px';
+                document.body.appendChild(clone);
+
+                const opt = {
+                    margin: 0,
+                    filename: `疏文_${new Date().getTime()}.pdf`,
+                    image: { type: 'jpeg', quality: 1.0 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    jsPDF: { unit: 'mm', format: paperSize.toLowerCase(), orientation: paperOrientation },
+                    pagebreak: { mode: 'css' }
+                };
+
+                html2pdf().set(opt).from(clone).save().then(() => {
+                    document.body.removeChild(clone);
+                }).catch(err => {
+                    console.error("PDF Export Error: ", err);
+                    document.body.removeChild(clone);
+                });
             };
 
             const activeBlock = blocks.find(b => b.id === selectedId);
@@ -376,133 +858,639 @@
                 transformOrigin: 'top center',
                 boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
                 position: 'relative',
-                transition: 'transform 0.2s ease-out', 
+                transition: 'transform 0.2s ease-out',
                 flexShrink: 0
             };
 
             return (
                 <div className="h-screen bg-gray-200 flex flex-col md:flex-row overflow-hidden font-sans text-gray-800 select-none touch-none">
                     <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleImage} />
+                    <input type="file" ref={projectInputRef} accept=".json" className="hidden" onChange={handleLoadProject} />
+                    <input type="file" ref={watermarkInputRef} accept="image/*" className="hidden" onChange={addWatermark} />
+                    <input type="file" ref={csvInputRef} accept=".csv" className="hidden" onChange={handleLoadCSV} />
 
                     {/* 列印預覽 Modal */}
                     {showPreview && (
-                        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center p-4">
-                            <div className="bg-white rounded-lg p-4 w-full max-w-xl flex flex-col max-h-[90vh]">
-                                <div className="flex justify-between items-center mb-2 pb-2 border-b">
+                        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center p-4 print-override">
+                            <div className="bg-white rounded-lg p-4 w-full max-w-xl flex flex-col max-h-[90vh] print-override">
+                                <div className="flex justify-between items-center mb-2 pb-2 border-b print:hidden">
                                     <h3 className="font-bold">預覽 (將印出以下內容)</h3>
-                                    <button onClick={()=>setShowPreview(false)}><Icon name="x"/></button>
+                                    <button onClick={() => setShowPreview(false)}><Icon name="x" /></button>
                                 </div>
-                                <div ref={previewContainerRef} className="flex-1 overflow-auto bg-gray-300 p-4 flex justify-center items-start">
-                                    <div className="bg-white shadow-xl relative origin-top" 
-                                            style={{ 
-                                                width: `${dimsMM.w}mm`, 
-                                                height: `${dimsMM.h}mm`, 
+                                <div ref={previewContainerRef} className="flex-1 overflow-auto bg-gray-300 p-4 flex flex-col items-center gap-8 print-override">
+                                    {isBatchPrint && batchData.length > 0 ? (
+                                        batchData.map((row, idx) => {
+                                            const pageBlocks = blocks.map(b => {
+                                                if (b.type === 'text') {
+                                                    let newText = b.text;
+                                                    Object.keys(row).forEach(key => { newText = newText.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), row[key] || ''); });
+                                                    return { ...b, text: newText };
+                                                } return b;
+                                            });
+                                            return (
+                                                <div key={idx} className="bg-white shadow-xl relative origin-top print-page paper-bg"
+                                                    style={{
+                                                        width: `${dimsMM.w}mm`,
+                                                        height: `${dimsMM.h}mm`,
+                                                        transform: `scale(${previewScale})`,
+                                                        transformOrigin: 'top center',
+                                                        flexShrink: 0
+                                                    }}>
+                                                    <PaperContent blocks={pageBlocks} showPreview={true} />
+                                                </div>
+                                            )
+                                        })
+                                    ) : (
+                                        <div className="bg-white shadow-xl relative origin-top print-page single-print-page paper-bg"
+                                            style={{
+                                                width: `${dimsMM.w}mm`,
+                                                height: `${dimsMM.h}mm`,
                                                 transform: `scale(${previewScale})`,
-                                                transformOrigin: 'top center'
+                                                transformOrigin: 'top center',
+                                                flexShrink: 0
                                             }}>
-                                        <PaperContent 
-                                            blocks={blocks} 
-                                            selectedId={null} 
-                                            showPreview={true}
-                                            onMouseDown={null}
-                                            onTouchStart={null}
-                                            onContextMenu={null}
-                                        />
-                                    </div>
+                                            <PaperContent
+                                                blocks={currentBlocksDisplay}
+                                                selectedId={null}
+                                                showPreview={true}
+                                                onMouseDown={null}
+                                                onTouchStart={null}
+                                                onContextMenu={null}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="mt-4 flex gap-2">
-                                    <button onClick={()=>setShowPreview(false)} className="flex-1 py-3 border rounded font-bold">返回修改</button>
-                                    <button onClick={()=>{window.print()}} className="flex-1 py-3 bg-blue-600 text-white rounded font-bold flex justify-center gap-2">
-                                        <Icon name="printer" color="white"/> 確認列印
+                                <div className="mt-4 flex gap-2 print:hidden flex-wrap">
+                                    <button onClick={() => setShowPreview(false)} className="flex-1 min-w-[100px] py-3 border rounded font-bold">返回編輯</button>
+                                    <button onClick={exportPDF} className="flex-1 min-w-[120px] py-3 bg-green-600 text-white rounded font-bold flex justify-center items-center gap-2">
+                                        <Icon name="save" color="white" /> 匯出 PDF
+                                    </button>
+                                    <button onClick={() => { window.print() }} className="flex-1 min-w-[120px] py-3 bg-blue-600 text-white rounded font-bold flex justify-center items-center gap-2">
+                                        <Icon name="printer" color="white" /> 開啟列印
+                                    </button>
+                                    <button onClick={() => { setShowPreview(false); setShowTeleprompter(true); }} className="w-full py-3 bg-purple-900 text-yellow-400 border border-yellow-600 rounded font-bold flex justify-center items-center gap-2 shadow-[0_0_10px_rgba(234,179,8,0.3)] mt-2">
+                                        <Icon name="eye" color="#facc15" /> 啟動：法師專用讀稿機 (大字報)
                                     </button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* V2：法師讀稿機 (Teleprompter) Modal */}
+                    {showTeleprompter && (
+                        <div className={`fixed inset-0 z-[100] flex flex-col transition-colors duration-500 ${teleprompterTheme === 'dark' ? 'bg-black text-yellow-400' : 'bg-white text-black'}`}>
+                            {/* 讀稿機控制列 */}
+                            <div className={`flex justify-between items-center p-4 border-b ${teleprompterTheme === 'dark' ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
+                                <div className="flex items-center gap-4">
+                                    <h3 className="font-bold text-xl drop-shadow-md">📜 祈福大字報</h3>
+                                    <div className="flex items-center gap-2 border rounded overflow-hidden">
+                                        <button onClick={() => setTeleprompterSize(s => Math.max(24, s - 8))} className="px-3 py-1 hover:bg-gray-500 hover:text-white transition">A-</button>
+                                        <span className="px-2 text-sm">{teleprompterSize}px</span>
+                                        <button onClick={() => setTeleprompterSize(s => Math.min(200, s + 8))} className="px-3 py-1 hover:bg-gray-500 hover:text-white transition">A+</button>
+                                    </div>
+                                    <div className="flex items-center gap-2 border rounded overflow-hidden">
+                                        <button onClick={() => setTeleprompterTheme('dark')} className={`px-3 py-1 transition ${teleprompterTheme === 'dark' ? 'bg-gray-700 text-white' : 'hover:bg-gray-200'}`}>黑底金字</button>
+                                        <button onClick={() => setTeleprompterTheme('light')} className={`px-3 py-1 transition ${teleprompterTheme === 'light' ? 'bg-gray-300 text-black' : 'hover:bg-gray-800'}`}>白底黑字</button>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowTeleprompter(false)} className="p-2 border rounded hover:bg-red-600 hover:text-white transition"><Icon name="x" size={24} /></button>
+                            </div>
+
+                            {/* 讀稿機內容區 (由右至左捲動) */}
+                            <div className="flex-1 overflow-x-auto overflow-y-hidden p-8 flex justify-end" style={{ writingMode: 'vertical-rl' }}>
+                                <div className="flex flex-col flex-wrap h-full gap-8 pr-[50vw]">
+                                    {/* 提取所有純文字並依照 x 座標 (由右至左) 排序 */}
+                                    {blocks
+                                        .filter(b => b.type === 'text')
+                                        .sort((a, b) => b.x - a.x)
+                                        .map((b, i) => (
+                                            <div key={i} className="" style={{ fontSize: `${teleprompterSize}px`, lineHeight: '1.8', fontFamily: '"KaiTi", "BiauKai", "DFKai-SB", "楷體", serif' }}>
+                                                {b.text.split('\n').map((line, li) => (
+                                                    <div key={li} className="mb-4">{line}</div>
+                                                ))}
+                                            </div>
+                                        ))
+                                    }
+                                    {blocks.filter(b => b.type === 'text').length === 0 && (
+                                        <div className="text-center opacity-50" style={{ fontSize: `${teleprompterSize}px` }}>畫布上沒有可朗讀的文字內容</div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className={`p-2 text-center text-xs opacity-50 border-t ${teleprompterTheme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+                                提示：可用手指或滑鼠向左滑動平閱讀稿內容。
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 批次處理說明 Modal */}
+                    {showBatchHelp && (
+                        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-70 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl">
+                                <h3 className="font-bold text-lg mb-4 text-green-800 border-b pb-2">📂 批次自動套印說明</h3>
+                                <div className="space-y-4 text-sm text-gray-700">
+                                    <p>這項功能可以讓您從 Excel (CSV) 匯入名單，自動產生數百份不同的疏文。</p>
+                                    <div>
+                                        <div className="font-bold mb-1">第一步：準備 Excel 檔案</div>
+                                        <p className="text-gray-500">將您的信眾名單加上標題列（例如第一列寫上：「姓名」、「地址」），然後另存新檔為 <b>CSV (逗號分隔)</b> 格式。</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold mb-1">第二步：在排版中加入變數</div>
+                                        <p className="text-gray-500">在疏文的文字區塊中，輸入帶有雙大括號的變數，例如：<br /><code className="bg-gray-100 text-red-600 px-1 rounded">{`信士 {{姓名}} 居住於 {{地址}}`}</code></p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold mb-1">第三步：匯入並預覽列印</div>
+                                        <p className="text-gray-500">點擊載入 CSV 後，工具箱會顯示匯入了幾筆資料。這時主畫面會自動將變數替換成第一筆資料供您預覽位置是否正確。點擊「列印」系統就會一次產出所有人的疏文。</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowBatchHelp(false)} className="w-full mt-6 py-2 bg-gray-800 text-white font-bold rounded">我瞭解了</button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* 右鍵選單 */}
                     {contextMenu.visible && (
-                        <div className="fixed z-50 bg-white rounded shadow-xl border py-1 min-w-[140px]" style={{ left: Math.min(contextMenu.x, window.innerWidth-150), top: Math.min(contextMenu.y, window.innerHeight-200) }}>
+                        <div className="fixed z-50 bg-white rounded shadow-xl border py-1 min-w-[140px]" style={{ left: Math.min(contextMenu.x, window.innerWidth - 150), top: Math.min(contextMenu.y, window.innerHeight - 200) }}>
                             {contextMenu.isBackground ? (
                                 <>
-                                    <button onClick={()=>handleMenuAction('addText')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="plus"/> 新增文字</button>
-                                    <button onClick={()=>handleMenuAction('addImage')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="image"/> 新增圖片</button>
-                                    <button onClick={()=>handleMenuAction('paste')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm" disabled={!clipboard}><Icon name="paste"/> 貼上</button>
+                                    <button onClick={() => handleMenuAction('addText')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="plus" /> 新增文字</button>
+                                    <button onClick={() => handleMenuAction('addImage')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="image" /> 新增圖片</button>
+                                    <button onClick={() => handleMenuAction('paste')} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex gap-2 text-sm" disabled={!clipboard}><Icon name="paste" /> 貼上</button>
                                 </>
                             ) : (
                                 <>
-                                    <button onClick={()=>handleMenuAction('edit')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="edit"/> 編輯</button>
-                                    <button onClick={()=>handleMenuAction('toggleLock')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="lock"/> 鎖定/解鎖</button>
-                                    <button onClick={()=>handleMenuAction('copy')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="copy"/> 複製</button>
-                                    <button onClick={()=>handleMenuAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-500 flex gap-2 text-sm"><Icon name="trash"/> 刪除</button>
+                                    <button onClick={() => handleMenuAction('edit')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="edit" /> 編輯</button>
+                                    <button onClick={() => handleMenuAction('toggleLock')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="lock" /> 鎖定/解鎖</button>
+                                    <div className="border-t my-1"></div>
+                                    <button onClick={() => handleMenuAction('bringToFront')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="layerUp" /> 移至最上層</button>
+                                    <button onClick={() => handleMenuAction('sendToBack')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="layerDown" /> 移至最底層</button>
+                                    <button onClick={() => handleMenuAction('alignCenterH')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="alignCenter" /> 水平置中 (畫面)</button>
+                                    <div className="border-t my-1"></div>
+                                    <button onClick={() => handleMenuAction('copy')} className="w-full text-left px-4 py-2 hover:bg-blue-50 flex gap-2 text-sm"><Icon name="copy" /> 複製</button>
+                                    <button onClick={() => handleMenuAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-500 flex gap-2 text-sm"><Icon name="trash" /> 刪除</button>
                                 </>
                             )}
                         </div>
                     )}
-                    {contextMenu.visible && <div className="fixed inset-0 z-40" onClick={()=>setContextMenu({...contextMenu,visible:false})} onTouchStart={()=>setContextMenu({...contextMenu,visible:false})}/>}
+                    {contextMenu.visible && <div className="fixed inset-0 z-40" onClick={() => setContextMenu({ ...contextMenu, visible: false })} onTouchStart={() => setContextMenu({ ...contextMenu, visible: false })} />}
+
+                    {/* V4：App Store 風格範本市集 Modal */}
+                    {showTemplateMarket && (
+                        <div className="fixed inset-0 z-[100] bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-0 md:p-10 animate-in fade-in duration-300">
+                            <div className="bg-[#f2f2f7] md:rounded-2xl shadow-2xl w-full h-full max-w-6xl flex flex-col md:flex-row overflow-hidden relative">
+
+                                {/* 左側 Sidebar */}
+                                <div className="w-full md:w-64 bg-[#f2f2f7] border-b md:border-b-0 md:border-r border-gray-200 flex flex-col p-4">
+                                    <div className="hidden md:flex flex-col mb-8">
+                                        <h2 className="text-2xl font-bold tracking-tight px-3 py-4">範本市集</h2>
+                                        <div className="relative px-3">
+                                            <input type="text" placeholder="搜尋範本" className="w-full bg-gray-200 border-none rounded-lg px-3 py-1.5 text-sm focus:ring-0" />
+                                        </div>
+                                    </div>
+                                    <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 scrollbar-hide">
+                                        {['ALL', '祈福', '拔薦', '節慶'].map(cat => (
+                                            <button
+                                                key={cat}
+                                                onClick={() => { setActiveStoreCategory(cat); setStoreDetailItem(null); }}
+                                                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap
+                                                    ${activeStoreCategory === cat ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:bg-gray-200'}
+                                                `}
+                                            >
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg
+                                                    ${activeStoreCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'}
+                                                `}>
+                                                    {cat === 'ALL' ? '' : cat === '祈福' ? '🧧' : cat === '拔薦' ? '☸️' : '🏮'}
+                                                </div>
+                                                {cat === 'ALL' ? '全部類別' : cat}
+                                            </button>
+                                        ))}
+                                    </nav>
+                                    <button onClick={() => setShowTemplateMarket(false)} className="md:mt-auto p-4 flex items-center gap-2 text-red-500 font-semibold hover:bg-red-50 rounded-xl transition">
+                                        <Icon name="x" size={20} /> 關閉市集
+                                    </button>
+                                </div>
+
+                                {/* 右側內容區 */}
+                                <div className="flex-1 bg-white overflow-y-auto p-6 md:p-10 scrollbar-hide text-gray-800">
+                                    {storeDetailItem ? (
+                                        /* 詳情頁面 */
+                                        <div className="animate-in slide-in-from-right duration-500 h-full flex flex-col">
+                                            <div className="flex items-start gap-6 mb-8">
+                                                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-3xl ${storeDetailItem.coverColor} flex items-center justify-center text-7xl shadow-lg text-white`}>
+                                                    {storeDetailItem.coverIcon}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h3 className="text-3xl font-extrabold mb-1">{storeDetailItem.name}</h3>
+                                                    <p className="text-blue-600 font-semibold text-lg mb-4">{storeDetailItem.category}</p>
+                                                    <div className="flex items-center gap-4">
+                                                        <button
+                                                            onClick={() => {
+                                                                // V4: 直接套用，避免某些瀏覽器或環境下 confirm 造成阻塞或無法跳出的問題
+                                                                const clonedBlocks = JSON.parse(JSON.stringify(storeDetailItem.blocks));
+                                                                setBlocks(clonedBlocks);
+                                                                setHistory([clonedBlocks]);
+                                                                setHistoryIndex(0);
+                                                                setSelectedId(null);
+                                                                setShowTemplateMarket(false);
+                                                                alert('範本套用成功！');
+                                                            }}
+                                                            className="bg-blue-600 text-white px-10 py-2.5 rounded-full font-bold text-lg hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all shadow-md"
+                                                        >
+                                                            獲取
+                                                        </button>
+                                                        <button onClick={() => setStoreDetailItem(null)} className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 transition"><Icon name="arrowRight" className="rotate-180" /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-4 mb-8 text-center border-y py-4 border-gray-100">
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">評分</p>
+                                                    <div className="text-xl font-bold text-gray-700 flex items-center justify-center gap-1">{storeDetailItem.rating} <span className="text-sm">★</span></div>
+                                                </div>
+                                                <div className="border-x border-gray-100">
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">開發者</p>
+                                                    <div className="text-sm font-bold text-gray-700 truncate px-2">{storeDetailItem.author}</div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">下載量</p>
+                                                    <div className="text-xl font-bold text-gray-700">{storeDetailItem.downloads}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="prose max-w-none">
+                                                <h4 className="text-xl font-bold mb-4">簡介</h4>
+                                                <p className="text-gray-600 leading-relaxed text-lg">{storeDetailItem.desc}</p>
+                                            </div>
+
+                                            <div className="mt-10">
+                                                <h4 className="text-xl font-bold mb-4 text-gray-800">預覽 (內容格式)</h4>
+                                                <div className="bg-gray-50 rounded-3xl p-8 flex justify-center items-center h-80 overflow-hidden relative shadow-inner border border-gray-100">
+                                                    <div className="scale-[0.4] origin-center -translate-y-4">
+                                                        <div className="flex gap-8">
+                                                            {storeDetailItem.blocks.map((b, i) => (
+                                                                b.type === 'text' && (
+                                                                    <div key={i} style={{ writingMode: 'vertical-rl', fontSize: '28px', whiteSpace: 'pre-wrap', fontFamily: '"KaiTi", serif' }} className="border-2 border-red-800 p-4 bg-yellow-50 shadow-md text-red-900">{b.text}</div>
+                                                                )
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        /* 列表頁面 */
+                                        <div className="animate-in fade-in slide-in-from-bottom duration-500">
+                                            <div className="flex justify-between items-end mb-8">
+                                                <div>
+                                                    <p className="text-gray-500 font-bold uppercase tracking-widest text-xs mb-1">精選範本</p>
+                                                    <h3 className="text-4xl font-extrabold">{activeStoreCategory === 'ALL' ? '全部範本' : activeStoreCategory}</h3>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                                {filteredStoreTemplates.map(tpl => (
+                                                    <div
+                                                        key={tpl.id}
+                                                        onClick={() => setStoreDetailItem(tpl)}
+                                                        className="group bg-white rounded-[2rem] p-5 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 cursor-pointer border border-gray-50 flex flex-col"
+                                                    >
+                                                        <div className={`w-full aspect-square rounded-[1.5rem] ${tpl.coverColor} mb-5 flex items-center justify-center text-7xl group-hover:scale-105 transition-transform duration-500 shadow-inner text-white`}>
+                                                            {tpl.coverIcon}
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex-1 min-w-0">
+                                                                <h4 className="font-bold text-lg truncate text-gray-800">{tpl.name}</h4>
+                                                                <p className="text-sm text-gray-400 truncate">{tpl.author}</p>
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setStoreDetailItem(tpl);
+                                                                }}
+                                                                className="bg-gray-100 text-blue-600 px-4 py-1.5 rounded-full font-extrabold text-sm hover:bg-blue-600 hover:text-white transition-colors"
+                                                            >
+                                                                查看
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-[11px] font-bold text-gray-400">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-yellow-400 text-xs">★</span> {tpl.rating}
+                                                            </div>
+                                                            <div>{tpl.category}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 手機版關閉鈕 */}
+                                <button
+                                    onClick={() => setShowTemplateMarket(false)}
+                                    className="md:hidden absolute top-4 right-4 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-500 z-[110]"
+                                >
+                                    <Icon name="x" size={24} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* V3：本機信眾名冊 Modal (IndexedDB) */}
+                    {showDbManager && (
+                        <div className="fixed inset-0 z-[100] bg-gray-900 bg-opacity-90 flex items-center justify-center p-2 md:p-6">
+                            <div className="bg-white rounded-xl shadow-2xl w-full h-full md:max-w-6xl flex flex-col overflow-hidden border-2 border-green-600">
+                                {/* 標頭與工具列 */}
+                                <div className="p-4 bg-green-50 border-b flex flex-col md:flex-row gap-4 justify-between md:items-center">
+                                    <div className="flex items-center justify-between md:justify-start gap-4">
+                                        <h3 className="font-bold text-xl text-green-800 flex items-center gap-2"><Icon name="grid" size={24} /> 📖 本機信眾名冊</h3>
+                                        <button onClick={() => setShowDbManager(false)} className="md:hidden p-2 bg-gray-200 rounded"><Icon name="x" size={20} /></button>
+                                    </div>
+                                    <div className="flex-1 max-w-md w-full relative">
+                                        <input
+                                            type="text"
+                                            placeholder="搜尋姓名、電話、地址..."
+                                            value={dbSearch}
+                                            onChange={e => setDbSearch(e.target.value)}
+                                            className="w-full pl-3 pr-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                        />
+                                    </div>
+                                    <button onClick={() => setShowDbManager(false)} className="hidden md:block p-2 text-gray-500 hover:bg-red-50 hover:text-red-500 rounded transition"><Icon name="x" size={24} /></button>
+                                </div>
+
+                                {/* 控制按鈕區 */}
+                                <div className="p-3 bg-gray-100 border-b flex flex-wrap gap-2 items-center text-sm">
+                                    <button onClick={handleAddDbRow} className="px-3 py-1.5 bg-green-600 text-white rounded shadow hover:bg-green-700 font-bold">➕ 新增</button>
+                                    <div className="w-px h-6 bg-gray-300 mx-1"></div>
+                                    <button onClick={handleSyncCsvToDb} className="px-3 py-1.5 bg-blue-600 text-white rounded shadow hover:bg-blue-700 font-bold" title="把目前右下角載入的 CSV 名單存進來">📥 匯入目前 CSV</button>
+                                    <div className="w-px h-6 bg-gray-300 mx-1"></div>
+                                    <span className="text-gray-500">已選 {dbSelectedIndices.size} 筆</span>
+                                    <button
+                                        onClick={handleLoadDbSelectionToPrint}
+                                        disabled={dbSelectedIndices.size === 0}
+                                        className={`px-3 py-1.5 rounded shadow font-bold transition-colors ${dbSelectedIndices.size > 0 ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                        🖨️ 勾選套印！
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteDbSelected}
+                                        disabled={dbSelectedIndices.size === 0}
+                                        className={`ml-auto px-3 py-1.5 rounded shadow font-bold transition-colors ${dbSelectedIndices.size > 0 ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                        🗑️ 刪除勾選
+                                    </button>
+                                </div>
+
+                                {/* 名冊表格 */}
+                                <div className="flex-1 overflow-auto bg-gray-50">
+                                    <table className="w-full text-left border-collapse text-sm min-w-max">
+                                        <thead className="bg-gray-200 sticky top-0 shadow-sm z-10">
+                                            <tr>
+                                                <th className="p-2 border-b border-r w-12 text-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={filteredDbData.length > 0 && dbSelectedIndices.size === filteredDbData.length}
+                                                        onChange={() => handleDbSelectAll(filteredDbData)}
+                                                        className="w-4 h-4 cursor-pointer"
+                                                    />
+                                                </th>
+                                                <th className="p-2 border-b border-r font-bold text-gray-700 w-16 text-center">No.</th>
+                                                <th className="p-2 border-b border-r font-bold text-gray-700 w-32">姓名</th>
+                                                <th className="p-2 border-b border-r font-bold text-gray-700 w-40">聯絡電話</th>
+                                                <th className="p-2 border-b border-r font-bold text-gray-700">地址/戶籍</th>
+                                                <th className="p-2 border-b font-bold text-gray-700 w-32">備註</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredDbData.length === 0 ? (
+                                                <tr><td colSpan="6" className="p-10 text-center text-gray-500">
+                                                    沒有符合條件的名單。您可以點擊上方「新增」或「匯入目前 CSV」。
+                                                </td></tr>
+                                            ) : (
+                                                filteredDbData.map((row, index) => (
+                                                    <tr key={row.id} className={`hover:bg-blue-50 transition-colors ${dbSelectedIndices.has(row.id) ? 'bg-orange-50' : 'bg-white'}`}>
+                                                        <td className="p-2 border-b border-r text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={dbSelectedIndices.has(row.id)}
+                                                                onChange={() => handleDbToggleSelect(row.id)}
+                                                                className="w-4 h-4 cursor-pointer"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 border-b border-r text-center text-gray-400 font-mono text-xs">{index + 1}</td>
+                                                        <td className="p-0 border-b border-r">
+                                                            <input type="text" value={row.姓名 || ''} onChange={e => handleUpdateDbRow(row.id, '姓名', e.target.value)} className="w-full h-full p-2 bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400" />
+                                                        </td>
+                                                        <td className="p-0 border-b border-r">
+                                                            <input type="text" value={row.聯絡電話 || ''} onChange={e => handleUpdateDbRow(row.id, '聯絡電話', e.target.value)} className="w-full h-full p-2 bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400 placeholder-gray-300" placeholder="09..." />
+                                                        </td>
+                                                        <td className="p-0 border-b border-r">
+                                                            <input type="text" value={row.地址 || ''} onChange={e => handleUpdateDbRow(row.id, '地址', e.target.value)} className="w-full h-full p-2 bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400" />
+                                                        </td>
+                                                        <td className="p-0 border-b">
+                                                            <input type="text" value={row.備註 || ''} onChange={e => handleUpdateDbRow(row.id, '備註', e.target.value)} className="w-full h-full p-2 bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-400 text-gray-500 text-xs" />
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="p-2 bg-gray-100 border-t text-xs text-center text-gray-500 flex justify-between px-4">
+                                    <span>本地資料庫總筆數：{dbData.length} 筆</span>
+                                    <span>＊名單資料安全保存在您的個人電腦瀏覽器中，完全離線運作不洩漏隱私。</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* 左側面板 */}
                     <div className={`bg-white shadow-lg z-20 flex flex-col print:hidden transition-all duration-300 absolute md:relative bottom-0 w-full md:w-80 md:h-full ${isToolsOpen ? 'h-[50vh]' : 'h-12'}`}>
-                        <div className="p-3 border-b flex justify-between items-center bg-gray-50 cursor-pointer" onClick={()=>setIsToolsOpen(!isToolsOpen)}>
-                            <div className="flex items-center gap-2 font-bold"><Icon name="settings"/> 工具箱</div>
-                            <Icon name={isToolsOpen ? "chevronDown" : "chevronUp"} />
+                        <div className="p-3 border-b flex justify-between items-center bg-gray-50 cursor-pointer" onClick={() => setIsToolsOpen(!isToolsOpen)}>
+                            <div className="flex items-center gap-2 font-bold"><Icon name="settings" /> 工具箱</div>
+                            <div className="flex items-center gap-3">
+                                {/* 折疊時也想按 Undo，就把這區塊放這，或是只放展開的箭頭 */}
+                                <Icon name={isToolsOpen ? "chevronDown" : "chevronUp"} />
+                            </div>
                         </div>
-                        
+
+                        {/* 高級版：把工具列移至面板上方，絕不影響任何畫布或標題 */}
+                        {isToolsOpen && (
+                            <div className="flex gap-2 bg-white px-4 py-2 border-b justify-center items-center shadow-sm z-10">
+                                <button onClick={undo} disabled={historyIndex === 0} className={`p-2 rounded ${historyIndex === 0 ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100'}`} title="上一步 (Undo)"><Icon name="undo" /></button>
+                                <button onClick={redo} disabled={historyIndex === history.length - 1} className={`p-2 rounded ${historyIndex === history.length - 1 ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100'}`} title="下一步 (Redo)"><Icon name="redo" /></button>
+                                <div className="w-px h-5 bg-gray-300 mx-1"></div>
+                                <button onClick={handleSaveProject} className="p-2 rounded hover:bg-gray-100" title="儲存專案範本 (.json)"><Icon name="save" /></button>
+                                <button onClick={() => projectInputRef.current.click()} className="p-2 rounded hover:bg-gray-100" title="載入專案範本 (.json)"><Icon name="folder" /></button>
+                            </div>
+                        )}
+                        {isToolsOpen && (
+                            <div className="bg-orange-50 p-2 text-center border-b flex flex-col gap-1">
+                                <button onClick={() => setShowTemplateMarket(true)} className="text-orange-800 font-bold text-sm w-full py-1.5 hover:bg-orange-100 rounded transition flex items-center justify-center gap-2">
+                                    <Icon name="grid" size={16} /> 開啟 V2 疏文範本市集
+                                </button>
+                                <button onClick={() => setShowDbManager(true)} className="text-green-800 font-bold text-sm w-full py-1.5 hover:bg-green-100 rounded transition flex items-center justify-center gap-2 border border-green-200 shadow-sm bg-white">
+                                    📖 開啟 V3 本機信眾名冊
+                                </button>
+                            </div>
+                        )}
+
                         {isToolsOpen && activeBlock ? (
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                 <div className="flex justify-between items-center pb-2 border-b">
-                                    <span className="text-blue-600 font-bold flex gap-2 items-center"><Icon name="edit"/> {activeBlock.locked?'鎖定中':'編輯中'}</span>
+                                    <span className="text-blue-600 font-bold flex gap-2 items-center"><Icon name="edit" /> {activeBlock.locked ? '鎖定中' : '編輯中'}</span>
                                     <div className="flex gap-2">
-                                        <button onClick={()=>toggleLock(activeBlock.id)} className={`p-2 rounded ${activeBlock.locked?'bg-red-100':'bg-gray-100'}`}><Icon name={activeBlock.locked?"lock":"unlock"}/></button>
-                                        <button onClick={deleteBlock} className="p-2 rounded text-red-500 bg-gray-100" disabled={activeBlock.locked}><Icon name="trash"/></button>
+                                        <button onClick={() => toggleLock(activeBlock.id)} className={`p-2 rounded ${activeBlock.locked ? 'bg-red-100' : 'bg-gray-100'}`}><Icon name={activeBlock.locked ? "lock" : "unlock"} /></button>
+                                        <button onClick={deleteBlock} className="p-2 rounded text-red-500 bg-gray-100" disabled={activeBlock.locked}><Icon name="trash" /></button>
                                     </div>
                                 </div>
                                 {activeBlock.type === 'text' ? (
                                     <>
-                                        <textarea value={activeBlock.text} onChange={e=>updateBlock('text',e.target.value)} rows="3" className="w-full border p-2 rounded" disabled={activeBlock.locked}/>
-                                        <div className="flex gap-2"><button onClick={()=>updateBlock('writingMode','horizontal-tb')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowRight"/> 橫排</button><button onClick={()=>updateBlock('writingMode','vertical-rl')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowDown"/> 直排</button></div>
-                                        <div className="flex items-center gap-2"><span className="text-xs">字體</span><input type="range" min="12" max="150" value={activeBlock.fontSize} onChange={e=>updateBlock('fontSize',parseInt(e.target.value))} className="flex-1"/></div>
-                                        <label className="flex items-center gap-2"><input type="checkbox" checked={activeBlock.fontWeight==='bold'} onChange={e=>updateBlock('fontWeight',e.target.checked?'bold':'normal')}/> 粗體</label>
+                                        <button onClick={insertLunarDate} className="w-full text-xs bg-indigo-50 text-indigo-700 py-2 rounded border border-indigo-200 mb-2">📅 插入今日農曆日期 (文言文格式)</button>
+                                        <textarea value={activeBlock.text} onChange={e => updateBlock('text', e.target.value)} rows="3" className="w-full border p-2 rounded" disabled={activeBlock.locked} />
+                                        <div className="flex gap-2"><button onClick={() => updateBlock('writingMode', 'horizontal-tb')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowRight" /> 橫排</button><button onClick={() => updateBlock('writingMode', 'vertical-rl')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowDown" /> 直排</button></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs">字體</span><input type="range" min="12" max="150" value={activeBlock.fontSize} onChange={e => updateBlock('fontSize', parseInt(e.target.value))} className="flex-1" /></div>
+                                        <label className="flex items-center gap-2"><input type="checkbox" checked={activeBlock.fontWeight === 'bold'} onChange={e => updateBlock('fontWeight', e.target.checked ? 'bold' : 'normal')} /> 粗體</label>
                                     </>
-                                ) : (
+                                ) : activeBlock.type === 'image' ? (
                                     <div className="space-y-3">
-                                        <div className="h-20 bg-gray-100 flex justify-center"><img src={activeBlock.src} className="h-full object-contain"/></div>
-                                        <div className="flex items-center gap-2"><span className="text-xs">大小</span><input type="range" min="20" max="800" value={activeBlock.width} onChange={e=>updateBlock('width',parseInt(e.target.value))} className="flex-1"/></div>
-                                        <div className="flex items-center gap-2"><span className="text-xs">透明</span><input type="range" min="0.1" max="1" step="0.1" value={activeBlock.opacity} onChange={e=>updateBlock('opacity',parseFloat(e.target.value))} className="flex-1"/></div>
+                                        <div className="h-20 bg-gray-100 flex justify-center"><img src={activeBlock.src} className="h-full object-contain" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs">大小</span><input type="range" min="20" max="800" value={activeBlock.width} onChange={e => updateBlock('width', parseInt(e.target.value))} className="flex-1" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs">透明</span><input type="range" min="0.1" max="1" step="0.1" value={activeBlock.opacity} onChange={e => updateBlock('opacity', parseFloat(e.target.value))} className="flex-1" /></div>
                                     </div>
-                                )}
-                                <button onClick={()=>setSelectedId(null)} className="w-full py-2 bg-green-600 text-white rounded font-bold">完成</button>
+                                ) : activeBlock.type === 'grid_list' ? (
+                                    <div className="space-y-3 text-sm">
+                                        <div className="p-2 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200">💎 大表文網格：批次列印時會自動依序塞入名單。</div>
+                                        <div className="flex items-center gap-2"><span className="text-xs w-16">直行數量</span><input type="number" min="1" max="50" value={activeBlock.gridCols} onChange={e => updateBlock('gridCols', parseInt(e.target.value) || 1)} className="flex-1 border p-1 rounded" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs w-16">橫列數量</span><input type="number" min="1" max="50" value={activeBlock.gridRows} onChange={e => updateBlock('gridRows', parseInt(e.target.value) || 1)} className="flex-1 border p-1 rounded" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs w-16">區塊寬度</span><input type="range" min="50" max="2000" value={activeBlock.width} onChange={e => updateBlock('width', parseInt(e.target.value))} className="flex-1" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs w-16">區塊高度</span><input type="range" min="50" max="2000" value={activeBlock.height} onChange={e => updateBlock('height', parseInt(e.target.value))} className="flex-1" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs w-16">文字大小</span><input type="range" min="8" max="100" value={activeBlock.fontSize} onChange={e => updateBlock('fontSize', parseInt(e.target.value))} className="flex-1" /></div>
+
+                                        <div className="mt-2">
+                                            <span className="text-xs font-bold mb-1 block">網格變數樣板</span>
+                                            <input type="text" value={activeBlock.template} onChange={e => updateBlock('template', e.target.value)} className="w-full border p-2 rounded text-xs" placeholder="例如：{{姓名}}" />
+                                        </div>
+                                        <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={activeBlock.showSeparator} onChange={e => updateBlock('showSeparator', e.target.checked)} /> 顯示紅色分隔點</label>
+                                        <div className="flex gap-2"><button onClick={() => updateBlock('writingMode', 'horizontal-tb')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowRight" /> 橫排</button><button onClick={() => updateBlock('writingMode', 'vertical-rl')} className="flex-1 border py-2 rounded text-xs flex justify-center gap-1"><Icon name="arrowDown" /> 直排</button></div>
+                                    </div>
+                                ) : activeBlock.type === 'qr_code' ? (
+                                    <div className="space-y-3 text-sm">
+                                        <div className="p-2 bg-blue-50 text-blue-800 text-xs rounded border border-blue-200">📱 自助填單 QR Code：輸入您的 Google 表單網址，用手機掃描會自動開啟。</div>
+                                        <div className="mt-2">
+                                            <span className="text-xs font-bold mb-1 block">表單或活動網址</span>
+                                            <input type="text" value={activeBlock.url} onChange={e => updateBlock('url', e.target.value)} className="w-full border p-2 rounded text-xs" placeholder="https://forms.google.com/..." />
+                                        </div>
+                                        <div className="flex items-center gap-2"><span className="text-xs">大小</span><input type="range" min="50" max="800" value={activeBlock.width} onChange={e => updateBlock('width', parseInt(e.target.value))} className="flex-1" /></div>
+                                        <div className="flex items-center gap-2"><span className="text-xs">透明</span><input type="range" min="0.1" max="1" step="0.1" value={activeBlock.opacity} onChange={e => updateBlock('opacity', parseFloat(e.target.value))} className="flex-1" /></div>
+                                    </div>
+                                ) : null}
+                                <button onClick={() => setSelectedId(null)} className="w-full py-2 bg-green-600 text-white rounded font-bold">完成</button>
                             </div>
                         ) : isToolsOpen && (
                             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                <div className="flex bg-gray-100 rounded p-1 mb-2"><button onClick={()=>setPaperSize('A4')} className={`flex-1 text-xs py-1 rounded ${paperSize==='A4'?'bg-white shadow':''}`}>A4</button><button onClick={()=>setPaperSize('A3')} className={`flex-1 text-xs py-1 rounded ${paperSize==='A3'?'bg-white shadow':''}`}>A3</button></div>
-                                <div className="flex bg-gray-100 rounded p-1 mb-4"><button onClick={()=>setPaperOrientation('portrait')} className={`flex-1 text-xs py-1 rounded ${paperOrientation==='portrait'?'bg-white shadow':''}`}>直式</button><button onClick={()=>setPaperOrientation('landscape')} className={`flex-1 text-xs py-1 rounded ${paperOrientation==='landscape'?'bg-white shadow':''}`}>橫式</button></div>
-                                <div className="flex gap-2 mb-2"><button onClick={()=>addBlock('text')} className="flex-1 bg-blue-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1"><Icon name="plus"/> 文字</button><button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-orange-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1"><Icon name="image"/> 圖片</button></div>
-                                <div className="space-y-1">{blocks.map((b,i)=>(<div key={b.id} onClick={()=>setSelectedId(b.id)} className={`p-2 border rounded flex justify-between bg-white text-xs ${b.locked?'bg-gray-50':''}`}><span className="truncate w-32">{b.type==='text'?b.text: '圖片'}</span>{b.locked && <Icon name="lock" size={12} className="text-red-400"/>}</div>))}</div>
-                                <button onClick={()=>setShowPreview(true)} className="w-full bg-gray-800 text-white py-3 rounded font-bold flex items-center justify-center gap-2 mt-4"><Icon name="printer"/> 列印疏文</button>
+                                <div className="flex bg-gray-100 rounded p-1 mb-2 items-center justify-between">
+                                    <label className="text-xs font-bold flex items-center gap-1 cursor-pointer">
+                                        <input type="checkbox" checked={showFoldGuides} onChange={e => setShowFoldGuides(e.target.checked)} /> 顯示摺紙輔助線
+                                    </label>
+                                    {showFoldGuides && (
+                                        <select value={foldCount} onChange={e => setFoldCount(Number(e.target.value))} className="text-xs border p-1 rounded bg-white">
+                                            <option value={5}>5 摺</option>
+                                            <option value={7}>7 摺</option>
+                                            <option value={9}>9 摺</option>
+                                            <option value={11}>11 摺</option>
+                                            <option value={12}>12 摺</option>
+                                        </select>
+                                    )}
+                                </div>
+                                <div className="flex bg-gray-100 rounded p-1 mb-2"><button onClick={() => setPaperSize('A4')} className={`flex-1 text-xs py-1 rounded ${paperSize === 'A4' ? 'bg-white shadow' : ''}`}>A4</button><button onClick={() => setPaperSize('A3')} className={`flex-1 text-xs py-1 rounded ${paperSize === 'A3' ? 'bg-white shadow' : ''}`}>A3</button></div>
+                                <div className="flex bg-gray-100 rounded p-1 mb-4"><button onClick={() => setPaperOrientation('portrait')} className={`flex-1 text-xs py-1 rounded ${paperOrientation === 'portrait' ? 'bg-white shadow' : ''}`}>直式</button><button onClick={() => setPaperOrientation('landscape')} className={`flex-1 text-xs py-1 rounded ${paperOrientation === 'landscape' ? 'bg-white shadow' : ''}`}>橫式</button></div>
+                                <div className="flex gap-2 mb-2">
+                                    <button onClick={() => addBlock('text')} className="flex-1 bg-blue-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1"><Icon name="plus" /> 文字</button>
+                                    <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-orange-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1"><Icon name="image" /> 圖片</button>
+                                    <button onClick={() => addBlock('grid_list')} className="flex-1 bg-purple-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1 relative" title="新增大表文連續清單區塊">
+                                        <Icon name="grid" /> 名單
+                                    </button>
+                                    <button onClick={() => addBlock('qr_code')} className="flex-1 bg-teal-600 text-white py-2 rounded text-xs shadow flex justify-center gap-1 relative" title="新增自助填單 QR Code">
+                                        <Icon name="scan" /> 條碼
+                                    </button>
+                                </div>
+                                <div className="space-y-1">{blocks.map((b, i) => (<div key={b.id} onClick={() => setSelectedId(b.id)} className={`p-2 border rounded flex justify-between bg-white text-xs ${b.locked ? 'bg-gray-50' : ''}`}><span className="truncate w-32">{b.type === 'text' ? b.text : b.type === 'image' ? '圖片' : b.type === 'qr_code' ? 'QR Code' : '網格名單'}</span>{b.locked && <Icon name="lock" size={12} className="text-red-400" />}</div>))}</div>
+
+                                {/* 高級版功能：道教印章與浮水印設定 */}
+                                <div className="mt-4 pt-4 border-t">
+                                    <div className="text-sm font-bold mb-2 flex justify-between items-center">
+                                        <span>道教常用印章 (點擊加入)</span>
+                                        <button onClick={() => setSnapToGrid(!snapToGrid)} className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${snapToGrid ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}><Icon name="grid" size={14} /> {snapToGrid ? '網格吸附 ON' : '網格吸附 OFF'}</button>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 mb-2">
+                                        <button onClick={() => addStamp('道經師寶')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">道經<br />師寶</button>
+                                        <button onClick={() => addStamp('太上老君')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">太上<br />老君</button>
+                                        <button onClick={() => addStamp('玄天上帝')} className="border rounded p-2 text-xs flex justify-center items-center h-16 bg-red-50 text-red-800 font-bold border-red-200">玄天<br />上帝</button>
+                                    </div>
+                                    <button onClick={() => watermarkInputRef.current.click()} className="w-full bg-indigo-50 text-indigo-700 py-2 border border-indigo-200 rounded text-xs flex justify-center items-center gap-1"><Icon name="image" size={14} /> 設定全頁防偽浮水印</button>
+                                </div>
+
+                                <div className="mt-4 pt-4 border-t">
+                                    <div className="text-sm font-bold mb-2 flex justify-between items-center">
+                                        <span>💎 高級版：批次自動套印</span>
+                                        <button onClick={() => setShowBatchHelp(true)} className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs">？操作說明</button>
+                                    </div>
+                                    {batchData.length === 0 ? (
+                                        <button onClick={() => csvInputRef.current.click()} className="w-full bg-green-50 text-green-700 py-2 border border-green-200 rounded text-xs flex justify-center items-center gap-1"><Icon name="folder" size={14} /> 載入 Excel (CSV) 名單</button>
+                                    ) : (
+                                        <div className="text-xs space-y-2">
+                                            <div className="flex justify-between items-center bg-green-100 text-green-800 px-2 py-1 rounded">
+                                                <span>已載入 {batchData.length} 筆資料</span>
+                                                <button onClick={() => { setBatchData([]); setBatchPreviewIndex(-1); }} className="text-red-600 hover:text-red-800"><Icon name="x" size={14} /></button>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => setBatchPreviewIndex(p => Math.max(0, p - 1))} disabled={batchPreviewIndex <= 0} className="px-2 py-1 bg-gray-100 rounded border">上一筆</button>
+                                                <span className="flex-1 text-center font-bold">預覽：第 {batchPreviewIndex + 1} 筆</span>
+                                                <button onClick={() => setBatchPreviewIndex(p => Math.min(batchData.length - 1, p + 1))} disabled={batchPreviewIndex >= batchData.length - 1} className="px-2 py-1 bg-gray-100 rounded border">下一筆</button>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 text-center">排版時輸入 <b>{`{{欄位名稱}}`}</b>，系統將自動套用資料。</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {batchData.length > 0 ? (
+                                    <button onClick={() => { setIsBatchPrint(true); setShowPreview(true); }} className="w-full bg-blue-800 text-white py-3 rounded font-bold flex items-center justify-center gap-2 mt-4"><Icon name="printer" /> 批次預覽與列印 ({batchData.length}筆)</button>
+                                ) : (
+                                    <button onClick={() => { setIsBatchPrint(false); setShowPreview(true); }} className="w-full bg-gray-800 text-white py-3 rounded font-bold flex items-center justify-center gap-2 mt-4"><Icon name="printer" /> 列印疏文</button>
+                                )}
                             </div>
                         )}
                     </div>
 
                     {/* 縮放鈕 */}
                     <div className="fixed top-4 right-4 z-30 bg-white rounded shadow border flex flex-col p-1 print:hidden">
-                        <button onClick={()=>{setAutoScale(false);setViewScale(s=>Math.min(2,s+0.1))}} className="p-2"><Icon name="zoomIn"/></button>
-                        <button onClick={()=>{setAutoScale(false);setViewScale(s=>Math.max(0.2,s-0.1))}} className="p-2"><Icon name="zoomOut"/></button>
-                        <button onClick={()=>setAutoScale(true)} className={`text-[10px] p-1 ${autoScale?'text-blue-600':'text-gray-500'}`}>AUTO</button>
+                        <button onClick={() => { setAutoScale(false); setViewScale(s => Math.min(2, s + 0.1)) }} className="p-2"><Icon name="zoomIn" /></button>
+                        <button onClick={() => { setAutoScale(false); setViewScale(s => Math.max(0.2, s - 0.1)) }} className="p-2"><Icon name="zoomOut" /></button>
+                        <button onClick={() => setAutoScale(true)} className={`text-[10px] p-1 ${autoScale ? 'text-blue-600' : 'text-gray-500'}`}>AUTO</button>
                     </div>
 
                     {/* 編輯器畫布 */}
                     <div className="flex-1 bg-gray-200 overflow-hidden relative" onClick={handlePaperClick}>
-                        <div className="absolute inset-0 flex justify-center items-start pt-10 overflow-auto">
-                            <div ref={paperRef} onContextMenu={e=>handleContextMenu(e,null)} onTouchStart={e=>handlePaperTouchStart(e,null)} onDoubleClick={handlePaperDoubleClick}
-                                className="paper-bg relative shadow-2xl" 
+                        <div className="absolute inset-0 flex flex-col items-center justify-start pt-8 pb-32 overflow-auto">
+
+                            <div ref={paperRef} onContextMenu={e => handleContextMenu(e, null)} onTouchStart={e => handlePaperTouchStart(e, null)} onDoubleClick={handlePaperDoubleClick}
+                                className="paper-bg relative shadow-2xl"
                                 style={{ ...paperStyle }}>
-                                
-                                {guides.map((g, i) => <div key={i} className="absolute bg-cyan-400 z-50 pointer-events-none" style={{ left: g.type==='v'?`${g.pos}%`:0, top: g.type==='h'?`${g.pos}%`:0, width: g.type==='v'?'1px':'100%', height: g.type==='h'?'1px':'100%' }}/>)}
-                                
-                                <PaperContent 
-                                    blocks={blocks} 
-                                    selectedId={selectedId} 
+
+                                {guides.map((g, i) => <div key={i} className="absolute bg-cyan-400 z-50 pointer-events-none" style={{ left: g.type === 'v' ? `${g.pos}%` : 0, top: g.type === 'h' ? `${g.pos}%` : 0, width: g.type === 'v' ? '1px' : '100%', height: g.type === 'h' ? '1px' : '100%' }} />)}
+
+                                {/* 高級版 V2：摺紙輔助線 */}
+                                {showFoldGuides && !showPreview && Array.from({ length: foldCount - 1 }).map((_, i) => {
+                                    const pos = ((i + 1) / foldCount) * 100;
+                                    return (
+                                        <div key={`fold-${i}`} className="absolute top-0 h-full border-r border-dashed border-red-400 pointer-events-none print:hidden z-30 opacity-60" style={{ left: `${pos}%` }} />
+                                    );
+                                })}
+
+                                <PaperContent
+                                    blocks={currentBlocksDisplay}
+                                    selectedId={selectedId}
                                     showPreview={false}
                                     onMouseDown={handleMouseDown}
                                     onTouchStart={handleTouchStart}
@@ -519,4 +1507,5 @@
         root.render(<App />);
     </script>
 </body>
+
 </html>
