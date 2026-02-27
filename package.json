@@ -1,0 +1,25 @@
+{
+  "name": "sparse-writing",
+  "version": "1.0.0",
+  "description": "一個強大且彈性的網頁版疏文排版工具，專為道教宮廟與法事設計。這是一個純前端的解決方案，無需安裝額外軟體，即可在瀏覽器中完成高品質的疏文排版與列印。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "lite-server"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xvn5002036/Sparse-writing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/xvn5002036/Sparse-writing/issues"
+  },
+  "homepage": "https://github.com/xvn5002036/Sparse-writing#readme",
+  "devDependencies": {
+    "lite-server": "^2.6.1"
+  }
+}
